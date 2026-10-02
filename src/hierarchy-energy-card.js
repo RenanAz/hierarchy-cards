@@ -87,7 +87,18 @@ class HierarchyEnergyCard extends HTMLElement {
   }
   get hass() { return this._hass; }
 
-  getCardSize() { return 10; }
+  getCardSize() {
+    let n = 0;
+    if (this._byId && this._byId.size) {
+      let rows = this._flatten();
+      if (this._config.hide_zero) {
+        const zt = Math.abs(Number(this._config.zero_threshold) || 0);
+        rows = rows.filter((r) => Math.abs(r.value) > zt);
+      }
+      n = rows.slice(0, this._config.max_rows).length;
+    }
+    return Math.max(3, Math.ceil((n * 24 + 150) / 50));
+  }
 
   // Lovelace can re-parent/re-render cards, which fires disconnectedCallback
   // (tearing down the date-selector poll + subscription) and then reconnects
