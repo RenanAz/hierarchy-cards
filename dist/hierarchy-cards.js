@@ -1,5 +1,5 @@
 /*! hierarchy-cards v0.1.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
- *  Built 2026-10-02T10:14:14.847Z
+ *  Built 2026-10-02T10:14:23.785Z
  *  License: MIT */
 
 /* ------------------------------------------------------------------ */
@@ -627,6 +627,8 @@ class HierarchyEnergyCard extends HTMLElement {
     this._energyPoll = null;
     this._connectRetry = null;
     this._lastRangeKey = null;
+    this._pickerEl = null;
+    this._pickerTried = false;
   }
 
   setConfig(config) {
@@ -661,7 +663,8 @@ class HierarchyEnergyCard extends HTMLElement {
       tariff_peak_label: "Fora",
       tariff_decimals: 1,
       tariff_show_percent: true,
-      hide_unit_label: false
+      hide_unit_label: false,
+      date_picker: "auto"
     }, config);
     this._config.cost = Object.assign({
       peak_entity: null,
@@ -783,6 +786,74 @@ class HierarchyEnergyCard extends HTMLElement {
     if (!areaId) return none;
     const area = h.areas ? h.areas[areaId] : null;
     return { key: areaId, name: (area && area.name) ? area.name : areaId, icon: (area && area.icon) ? area.icon : null };
+  }
+
+  // Decide whether the card should render its own built-in energy-date-selection.
+  // "never"  -> never. "always" -> always. "auto" -> only when the dashboard
+  // has no Energy date selector / collection to follow.
+  _pickerMode() {
+    const m = String(this._config.date_picker || "auto").toLowerCase();
+    if (m === "never" || m === "false" || m === "off") return "never";
+    if (m === "always" || m === "true" || m === "on") return "always";
+    return "auto";
+  }
+
+  _hasExternalPicker() {
+    if (this._resolveEnergyCollection()) return true;
+    // A selector rendered by Lovelace lives in the light DOM; ours lives in our
+    // shadow root, so this cannot match ourselves.
+    return typeof document !== "undefined" && !!document.querySelector("hui-energy-date-selection-card");
+  }
+
+  _pickerDesired() {
+    const mode = this._pickerMode();
+    if (mode === "never") return false;
+    if (mode === "always") return true;
+    return !this._hasExternalPicker();
+  }
+
+  _maybePickerHtml() {
+    return this._pickerDesired() ? '<div class="picker"></div>' : "";
+  }
+
+  // Mount the built-in `energy-date-selection` card inside our shadow root.
+  // Using loadCardHelpers().createCardElement() triggers the lazy import of the
+  // real card; creating the element directly would not.
+  async _maybeMountPicker() {
+    if (!this._pickerDesired() || !this._hass) return;
+    const slot = this.shadowRoot && this.shadowRoot.querySelector(".picker");
+    if (!slot) return;
+    // _render() rewrites innerHTML, which detaches the picker element. Re-attach
+    // the same instance rather than rebuilding it (avoids a full re-fetch).
+    if (this._pickerEl) {
+      this._pickerEl.hass = this._hass;
+      if (this._pickerEl.parentNode !== slot) slot.appendChild(this._pickerEl);
+      return;
+    }
+    if (this._pickerTried) return;
+    this._pickerTried = true;
+    const helpers = (typeof window !== "undefined" && window.loadCardHelpers)
+      ? await window.loadCardHelpers() : null;
+    if (!helpers || typeof helpers.createCardElement !== "function") {
+      slot.innerHTML = '<div class="picker-hint">No Energy date selector found. ' +
+        "Add an <code>energy-date-selection</code> card to this dashboard, or set " +
+        "<code>date_picker: never</code> and place one yourself.</div>";
+      return;
+    }
+    let el = null;
+    try {
+      el = await Promise.resolve(helpers.createCardElement({
+        type: "energy-date-selection",
+        disable_compare: true
+      }));
+    } catch (e) { el = null; }
+    if (!el) {
+      slot.innerHTML = '<div class="picker-hint">Could not create the Energy date selector.</div>';
+      return;
+    }
+    el.hass = this._hass;
+    this._pickerEl = el;
+    slot.appendChild(el);
   }
 
   _connectEnergy() {
@@ -1325,11 +1396,13 @@ class HierarchyEnergyCard extends HTMLElement {
         '<div class="head"><div class="ttl">' + this._esc(this._config.title) + "</div>" +
         '<div class="controls">' + controls +
         '<div class="period">' + this._esc(this._periodText()) + "</div></div></div>" +
+        this._maybePickerHtml() +
         this._summaryHtml() +
         '<div class="card-content">' + body + status + "</div>" +
       "</ha-card>";
 
     this._bindClicks(root);
+    this._maybeMountPicker();
   }
 
   _bindClicks(root) {
@@ -1387,6 +1460,10 @@ class HierarchyEnergyCard extends HTMLElement {
       .period { font-size:0.8rem; color:var(--secondary-text-color); white-space:nowrap; }
       .expbtn { font:inherit; font-size:0.78rem; cursor:pointer; color:var(--primary-color); background:transparent; border:1px solid var(--divider-color, rgba(127,127,127,0.3)); border-radius:6px; padding:3px 8px; white-space:nowrap; }
       .expbtn:hover { background:var(--secondary-background-color, rgba(127,127,127,0.1)); }
+      .picker { padding:2px 8px; }
+      .picker hui-energy-date-selection-card { display:block; --ha-card-background:transparent; --ha-card-box-shadow:none; --ha-card-border-width:0; }
+      .picker-hint { font-size:0.8rem; color:var(--secondary-text-color); padding:6px 4px; }
+      .picker-hint code { font-size:0.85em; }
       .summary { display:flex; flex-wrap:wrap; gap:6px; padding:6px 12px 6px; }
       .chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:var(--secondary-background-color, rgba(127,127,127,0.1)); border-left:3px solid var(--chip-color, var(--primary-color)); min-width:72px; }
       .chip[data-entity] { cursor:pointer; }
