@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+
+# NOTE: dist/ is intentionally committed.
+# HACS looks in dist/, then the latest release, then the repo root, and needs a
+# .js file whose name matches the repository (minus an optional "lovelace-"
+# prefix). Committing the built bundle keeps the repo installable without a
+# build step.

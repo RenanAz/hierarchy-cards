@@ -1,0 +1,23 @@
+{
+  "name": "hierarchy-cards",
+  "version": "0.1.0",
+  "description": "Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "hacs",
+    "custom-card",
+    "energy",
+    "power"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CHANGEME/hierarchy-cards.git"
+  }
+}
