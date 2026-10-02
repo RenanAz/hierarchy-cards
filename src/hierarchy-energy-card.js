@@ -65,10 +65,10 @@ class HierarchyEnergyCard extends HTMLElement {
       hide_unit_label: false
     }, config);
     this._config.cost = Object.assign({
-      peak_entity: "sensor.energy_consumption_fora_do_vazio",
-      offpeak_entity: "sensor.energy_consumption_vazio",
-      peak_price: 0.23,
-      offpeak_price: 0.12,
+      peak_entity: null,
+      offpeak_entity: null,
+      peak_price: 0,
+      offpeak_price: 0,
       unit: "\u20ac"
     }, config.cost || {});
     this._storageKey = "hierarchy-energy-card:" + (config.id || config.title || "default");

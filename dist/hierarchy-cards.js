@@ -1,5 +1,5 @@
 /*! hierarchy-cards v0.1.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
- *  Built 2026-10-02T10:14:11.933Z
+ *  Built 2026-10-02T10:14:14.847Z
  *  License: MIT */
 
 /* ------------------------------------------------------------------ */
@@ -664,10 +664,10 @@ class HierarchyEnergyCard extends HTMLElement {
       hide_unit_label: false
     }, config);
     this._config.cost = Object.assign({
-      peak_entity: "sensor.energy_consumption_fora_do_vazio",
-      offpeak_entity: "sensor.energy_consumption_vazio",
-      peak_price: 0.23,
-      offpeak_price: 0.12,
+      peak_entity: null,
+      offpeak_entity: null,
+      peak_price: 0,
+      offpeak_price: 0,
       unit: "\u20ac"
     }, config.cost || {});
     this._storageKey = "hierarchy-energy-card:" + (config.id || config.title || "default");
