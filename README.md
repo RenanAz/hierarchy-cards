@@ -7,12 +7,27 @@ Two Lovelace custom cards, built from your existing **Energy dashboard**
 configuration — no extra sensors or templates required.
 
 > [!WARNING]
-> **Status: scaffold / pre-release.** This repository has been assembled but is
-> **not yet publishable as-is**. Read
-> [Known limitations](#known-limitations) and
-> [Before you publish](#before-you-publish) first. The cards work on the
-> author's instance; the refactors that make them robust for strangers are
-> listed there as follow-ups.
+> **Status: pre-release / unreleased.** The cards are imported from a working
+> personal setup and track its code exactly; nothing has been published yet.
+> The energy card mounts its own date picker, but the other items in
+> [Known limitations](#known-limitations) are real. Read
+> [Before you publish](#before-you-publish) before cutting a release.
+
+---
+
+## History
+
+`763e960` is the imported baseline — the cards exactly as they ran before this
+repository existed. Everything above it is a reviewable change:
+
+| Commit | Change |
+|--------|--------|
+| `5b38c2b` | removed the 660 px inner scroll cap |
+| `6e7c9a0` | `getCardSize()` computed from visible rows |
+| `eb1a2ee` | dropped hard-coded personal tariff defaults |
+| `ebc6b38` | energy card mounts its own `energy-date-selection` |
+
+`git diff 763e960..HEAD` is the full delta from the original code.
 
 ---
 
@@ -229,16 +244,16 @@ cost:
 
 ## Known limitations
 
-These are the reasons this is labelled scaffold rather than release-ready:
+These are the reasons this is pre-release rather than release-ready:
 
 1. **Energy card depends on HA-internal state.** It locates the Energy panel's
    date-selection collection by scanning private keys on `hass.connection`
    (`_energy*`) and subscribes to it. This is undocumented and may break
    between Home Assistant releases.
-2. **Energy card historically needed a co-located `energy-date-selection` card.**
-   Mitigated in this repo: `date_picker: auto` mounts one automatically when the
-   dashboard has none. The remaining gap is a fully self-contained range engine
-   (Today / Week / Month without relying on the picker element).
+2. **Energy card has no range engine of its own.** `date_picker: auto` mounts
+   the built-in picker, so a standalone selector card is no longer required —
+   but the card still cannot set a period by itself. A fully self-contained
+   Today / Week / Month range is on the roadmap.
 3. **Admin-only.** `energy/get_prefs` fails for non-admin users; the card shows
    an error message instead of degrading.
 4. **Polling.** The Energy card polls the collection every 500 ms while mounted.
@@ -257,7 +272,8 @@ These are the reasons this is labelled scaffold rather than release-ready:
 ## Roadmap
 
 - [x] Mount the built-in Energy date picker when the dashboard has none
-      (`date_picker`).
+      (`date_picker`). `ebc6b38`
+- [x] Size to content instead of a fixed 660 px box. `5b38c2b`, `6e7c9a0`
 - [ ] Give the Energy card its own date range (Today / Week / Month / custom)
       with the picker as an optional override.
 - [ ] Let config values be entity IDs, so users can point the card at their own
