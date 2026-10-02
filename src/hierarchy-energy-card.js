@@ -785,7 +785,7 @@ class HierarchyEnergyCard extends HTMLElement {
       .chip .txt { display:flex; flex-direction:column; }
       .chip .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
       .chip .v { font-size:0.9rem; font-variant-numeric:tabular-nums; }
-      .card-content { padding:4px 12px 14px; max-height:660px; overflow:auto; }
+      .card-content { padding:4px 12px 14px; }
       .row { display:flex; align-items:center; gap:6px; padding:1px 0; }
       .row[data-entity] { cursor:pointer; border-radius:4px; }
       .row[data-entity]:hover { background:var(--secondary-background-color, rgba(127,127,127,0.08)); }
