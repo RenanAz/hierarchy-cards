@@ -291,16 +291,15 @@ These are the reasons this is pre-release rather than release-ready:
 
 ## Before you publish
 
-- [ ] **Name the GitHub repository `hierarchy-cards`** (or
-      `lovelace-hierarchy-cards`). HACS requires a `.js` file whose name matches
-      the repository — here, `dist/hierarchy-cards.js` — and `filename` in
-      `hacs.json` must match it. A different repo name means HACS finds no
-      installable file.
-- [ ] Replace `<YOUR NAME>` in `LICENSE` and the `CHANGEME` repository URL in
-      `package.json`.
+- [x] **Repository named `hierarchy-cards`** — created at
+      [RenanAz/hierarchy-cards](https://github.com/RenanAz/hierarchy-cards).
+      HACS requires a `.js` file whose name matches the repository — here,
+      `dist/hierarchy-cards.js` — and `filename` in `hacs.json` matches it.
+- [x] `LICENSE` copyright and the `package.json` repository URL filled in.
 - [ ] Add screenshots and reference them in this README.
 - [ ] Set the GitHub repo **description** and **topics** (`home-assistant`,
-      `lovelace`, `hacs`, `custom-card`, `energy`).
+      `lovelace`, `hacs`, `custom-card`, `energy`). The `Validate` workflow's
+      `description` and `topics` checks fail until this is done.
 - [ ] Tag and publish a release (`v0.1.0`); HACS reads *releases*, not just tags.
 - [ ] Decide whether to do the roadmap refactors before requesting inclusion in
       the default HACS store.
