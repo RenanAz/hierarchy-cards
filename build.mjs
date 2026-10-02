@@ -21,7 +21,7 @@ const PARTS = [
 
 const banner =
   `/*! ${pkg.name} v${pkg.version} — ${pkg.description}\n` +
-  ` *  Built ${new Date().toISOString()}\n` +
+  ` *  Source: ${PARTS.join(", ")}\n` +
   ` *  License: ${pkg.license} */`;
 
 const chunks = [];
