@@ -65,7 +65,11 @@ class HierarchyEnergyCard extends HTMLElement {
       tariff_decimals: 1,
       tariff_show_percent: true,
       hide_unit_label: false,
-      date_picker: "auto"
+      date_picker: "auto",
+      show_cost: false,
+      cost_width: "62px",
+      cost_decimals: 2,
+      cost_show_currency: true
     }, config);
     this._config.cost = Object.assign({
       peak_entity: null,
@@ -506,8 +510,17 @@ class HierarchyEnergyCard extends HTMLElement {
     const sortValue = this._config.sort_siblings === "value";
     const total = this._roots.reduce((s, r) => s + (this._totals[r.id] || 0), 0);
     this._grandTotal = total;
+    // Per-row cost is a pro-rata allocation of the whole-period cost the card
+    // already computes for the "Cost" chip: cost_i = totalCost * value_i / total.
+    // That keeps every branch consistent (children + Untracked sum to the parent)
+    // and makes the root rows sum exactly to the chip.
+    const summary = this._summary();
+    const hasCost = typeof summary.cost === "number" && isFinite(summary.cost);
+    this._hasCost = hasCost;
+    this._costUnit = (hasCost && total > 0) ? (summary.cost / total) : 0;
     const push = (row, value, parentValue) => {
       row.pct = (parentValue && parentValue > 0) ? (value / parentValue) * 100 : null;
+      row.cost = hasCost ? (value * this._costUnit) : null;
       rows.push(row);
     };
     const walk = (node, depth, color, parentValue) => {
@@ -693,6 +706,17 @@ class HierarchyEnergyCard extends HTMLElement {
     return (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  _fmtCost(v) {
+    let dg = Number(this._config.cost_decimals);
+    if (!isFinite(dg) || dg < 0) dg = 2;
+    dg = Math.min(4, Math.round(dg));
+    const n = Number(v) || 0;
+    const num = n.toLocaleString(undefined, { minimumFractionDigits: dg, maximumFractionDigits: dg });
+    if (this._config.cost_show_currency === false) return num;
+    const unit = (this._config.cost && this._config.cost.unit) || "\u20ac";
+    return num + " " + unit;
+  }
+
   _fmtNum(v) {
     const n = Number(v) || 0;
     const abs = Math.abs(n);
@@ -748,6 +772,7 @@ class HierarchyEnergyCard extends HTMLElement {
     for (const r of rows) if (r.value > max) max = r.value;
     if (max <= 0) max = 1;
     const pctMode = this._pctMode();
+    const showCost = !!this._config.show_cost && this._hasCost;
 
     const body = rows.map((r) => {
       const w = this._widthFor(r, max);
@@ -775,6 +800,7 @@ class HierarchyEnergyCard extends HTMLElement {
           '<div class="track"><div class="bar" style="width:' + w.toFixed(2) + "%;background:" + color + '"></div></div>' +
           pctHtml +
           '<div class="val">' + this._fmt(r.value) + (this._config.hide_unit_label ? "" : ' <span class="u">' + this._esc(this._config.unit) + "</span>") + "</div>" +
+          (showCost ? '<div class="cost" title="Pro-rata share of the period cost">' + this._esc(this._fmtCost(r.cost)) + "</div>" : "") +
         "</div>" +
       "</div>";
     }).join("");
@@ -854,7 +880,7 @@ class HierarchyEnergyCard extends HTMLElement {
 
   _css() {
     return `
-      :host { display:block; --label-w:${this._config.label_width || "30%"}; --val-w:${this._config.value_width || "68px"}; --pct-w:${this._config.percent_width || "34px"}; }
+      :host { display:block; --label-w:${this._config.label_width || "30%"}; --val-w:${this._config.value_width || "68px"}; --pct-w:${this._config.percent_width || "34px"}; --cost-w:${this._config.cost_width || "62px"}; }
       .head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:12px 16px 4px; }
       .ttl { font-size:1.05rem; font-weight:600; }
       .controls { display:flex; align-items:center; gap:10px; }
@@ -896,6 +922,7 @@ class HierarchyEnergyCard extends HTMLElement {
       .row.untracked .bar { background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
       .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
       .val .u { font-size:0.75em; }
+      .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--secondary-text-color); }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
     `;

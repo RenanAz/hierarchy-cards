@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Per-row cost column on the energy card (`show_cost`, `cost_width`,
+  `cost_decimals`, `cost_show_currency`): each row shows its pro-rata share of
+  the period cost the `Cost` chip reports.
 - `date_picker: auto|always|never` on the energy card: it now mounts the
   built-in `energy-date-selection` itself when the dashboard has none, instead
   of showing zeros. `ebc6b38`

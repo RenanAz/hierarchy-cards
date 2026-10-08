@@ -188,6 +188,10 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `max_rows` | number | `300` | Row cap. |
 | `label_width` / `value_width` / `percent_width` | string | `30%` / `68px` / `34px` | Column widths. |
 | `hide_unit_label` | bool | `false` | Hide the unit suffix. |
+| `show_cost` | bool | `false` | Show a per-row cost column (pro-rata share of the period cost the `Cost` chip shows). |
+| `cost_width` | string | `62px` | CSS width of the cost column. |
+| `cost_decimals` | number | `2` | Decimals shown in the cost column. |
+| `cost_show_currency` | bool | `true` | Append the `cost.unit` symbol to each cost value. |
 | `show_tariff` | bool | `false` | Show the off-peak / peak split chip (needs `cost` entities). |
 | `tariff_offpeak_label` | string | `Vazio` | Off-peak label. |
 | `tariff_peak_label` | string | `Fora` | Peak label. |
@@ -236,6 +240,10 @@ cost:
   update (throttled by `update_interval`).
 - **Energy** calls `recorder/statistics_during_period` with `types: ["change"]`
   for the selected range, sums each statistic, and normalises the unit.
+- When `show_cost` is on, each row's cost is the period cost (the same value as
+  the `Cost` chip) allocated pro-rata by energy: `cost_i = totalCost ×
+  value_i / Σroots`. Children plus `Untracked` therefore still sum to the
+  parent, and the root rows sum exactly to the chip.
 - Area grouping uses `hass.entities` / `hass.devices` / `hass.areas`.
 - Boilerplate (colours, escaping, formatting, tree building, area lookup) is
   currently duplicated between the two source files; see the roadmap.
