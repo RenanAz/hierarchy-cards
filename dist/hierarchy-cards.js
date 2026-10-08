@@ -675,7 +675,8 @@ class HierarchyEnergyCard extends HTMLElement {
       offpeak_entity: null,
       peak_price: 0,
       offpeak_price: 0,
-      unit: "\u20ac"
+      unit: "\u20ac",
+      zero_cost_entities: []
     }, config.cost || {});
     this._storageKey = "hierarchy-energy-card:" + (config.id || config.title || "default");
     try {
@@ -1096,6 +1097,18 @@ class HierarchyEnergyCard extends HTMLElement {
     return Math.max(0, (this._totals[node.id] || 0) - childSum);
   }
 
+  // Entities whose energy is not grid-billed (e.g. solar-served EV / hot water).
+  // They carry zero cost AND are excluded from the cost allocation base, so they
+  // do not dilute the per-kWh rate applied to the grid-billed lines. Exact
+  // statistic/entity ids only — names are user-editable and unsafe to match on.
+  _zeroCostSet() {
+    const raw = (this._config.cost && this._config.cost.zero_cost_entities) || [];
+    const list = Array.isArray(raw) ? raw : [raw];
+    const set = new Set();
+    for (const x of list) if (typeof x === "string" && x.trim()) set.add(x.trim());
+    return set;
+  }
+
   _pctMode() {
     const v = this._config.show_percent;
     if (v === "areas") return "areas";
@@ -1110,16 +1123,42 @@ class HierarchyEnergyCard extends HTMLElement {
     const total = this._roots.reduce((s, r) => s + (this._totals[r.id] || 0), 0);
     this._grandTotal = total;
     // Per-row cost is a pro-rata allocation of the whole-period cost the card
-    // already computes for the "Cost" chip: cost_i = totalCost * value_i / total.
-    // That keeps every branch consistent (children + Untracked sum to the parent)
-    // and makes the root rows sum exactly to the chip.
+    // already computes for the "Cost" chip. Allocation uses a per-node "cost
+    // weight" — grid-billed energy — rather than raw energy, so that entries in
+    // `cost.zero_cost_entities` (solar-served loads) are free and, crucially,
+    // do not dilute the rate applied to the grid-billed lines:
+    //   weight(node) = zeroCost(node) ? 0
+    //                : (value - Σ value(children)) + Σ weight(child)
+    // Marking a node zero-cost zeroes its whole subtree. The invariants still
+    // hold: children + Untracked sum to the parent, and roots sum to the chip.
     const summary = this._summary();
-    const hasCost = typeof summary.cost === "number" && isFinite(summary.cost);
+    const zeroCost = this._zeroCostSet();
+    const weight = new Map();
+    const own = new Map();
+    const valueOf = (id) => this._totals[id] || 0;
+    const computeWeight = (node, frozen) => {
+      const free = frozen || zeroCost.has(node.id);
+      const v = valueOf(node.id);
+      let childValue = 0;
+      let childWeight = 0;
+      for (const c of node.children) {
+        childValue += valueOf(c.id);
+        childWeight += computeWeight(c, free);
+      }
+      const ownWeight = free ? 0 : Math.max(0, v - childValue);
+      own.set(node.id, ownWeight);
+      const w = free ? 0 : (ownWeight + childWeight);
+      weight.set(node.id, w);
+      return w;
+    };
+    let costBase = 0;
+    for (const r of this._roots) costBase += computeWeight(r, false);
+    const hasCost = typeof summary.cost === "number" && isFinite(summary.cost) && costBase > 0;
     this._hasCost = hasCost;
-    this._costUnit = (hasCost && total > 0) ? (summary.cost / total) : 0;
-    const push = (row, value, parentValue) => {
+    this._costUnit = hasCost ? (summary.cost / costBase) : 0;
+    const push = (row, value, parentValue, costValue) => {
       row.pct = (parentValue && parentValue > 0) ? (value / parentValue) * 100 : null;
-      row.cost = hasCost ? (value * this._costUnit) : null;
+      row.cost = hasCost ? ((costValue || 0) * this._costUnit) : null;
       rows.push(row);
     };
     const walk = (node, depth, color, parentValue) => {
@@ -1128,7 +1167,7 @@ class HierarchyEnergyCard extends HTMLElement {
         kind: "node", id: node.id, name: node.name, depth: depth,
         value: v, color: color, entity: node.id,
         hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id)
-      }, v, parentValue);
+      }, v, parentValue, weight.get(node.id));
       if (!node.children.length || !this._isExpanded(node.id)) return;
       let kids = node.children.slice();
       if (sortValue) kids.sort((a, b) => (this._totals[b.id] || 0) - (this._totals[a.id] || 0));
@@ -1139,7 +1178,10 @@ class HierarchyEnergyCard extends HTMLElement {
           if (!buckets.has(a.key)) buckets.set(a.key, { key: a.key, name: a.name, icon: a.icon, kids: [] });
           buckets.get(a.key).kids.push(k);
         }
-        for (const b of buckets.values()) b.sum = b.kids.reduce((s, k) => s + (this._totals[k.id] || 0), 0);
+        for (const b of buckets.values()) {
+          b.sum = b.kids.reduce((s, k) => s + (this._totals[k.id] || 0), 0);
+          b.weight = b.kids.reduce((s, k) => s + (weight.get(k.id) || 0), 0);
+        }
         let ownBucket = null;
         if (this._config.suppress_parent_area !== false) {
           const ownKey = this._areaOf(node.id).key;
@@ -1160,7 +1202,7 @@ class HierarchyEnergyCard extends HTMLElement {
           push({
             kind: "area", id: gid, name: b.name, depth: depth + 1,
             value: b.sum, color: color, hasChildren: true, expanded: gexp, icon: b.icon
-          }, b.sum, v);
+          }, b.sum, v, b.weight);
           if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum));
         }
       } else {
@@ -1172,7 +1214,7 @@ class HierarchyEnergyCard extends HTMLElement {
           kind: "untracked", id: node.id + ":untracked", name: this._config.untracked_label,
           depth: depth + 1, value: u, color: null,
           hasChildren: false, expanded: false
-        }, u, v);
+        }, u, v, own.get(node.id));
       }
     };
     let roots = this._roots.slice();

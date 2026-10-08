@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `cost.zero_cost_entities` on the energy card: list entities (solar-served
+  loads) that are excluded from the cost allocation and shown as €0, so they no
+  longer skew the per-kWh rate applied to the grid-billed lines.
 - Per-row cost column on the energy card (`show_cost`, `cost_width`,
   `cost_decimals`, `cost_show_currency`): each row shows its pro-rata share of
   the period cost the `Cost` chip reports.

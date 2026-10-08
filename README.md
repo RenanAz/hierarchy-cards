@@ -209,6 +209,7 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `cost.peak_price` | number | `0` | Price per unit for the peak period. |
 | `cost.offpeak_price` | number | `0` | Price per unit for the off-peak period. |
 | `cost.unit` | string | `€` | Currency symbol. |
+| `cost.zero_cost_entities` | list | `[]` | Statistic/entity ids treated as zero cost (e.g. solar-served EV, hot water). Excluded from the cost allocation and shown as €0. Marking a parent zeroes its whole subtree. |
 
 Cost and tariff chips appear only when at least one of
 `cost.peak_entity` / `cost.offpeak_entity` is set.
@@ -227,6 +228,11 @@ cost:
   peak_price: 0.23
   offpeak_price: 0.12
   unit: €
+  # Solar-served loads: free, and removed from the cost allocation base so they
+  # don't dilute the rate charged to the grid-billed lines.
+  zero_cost_entities:
+    - sensor.ev_charger_energy
+    - sensor.hot_water_energy
 ```
 
 ---
@@ -241,9 +247,11 @@ cost:
 - **Energy** calls `recorder/statistics_during_period` with `types: ["change"]`
   for the selected range, sums each statistic, and normalises the unit.
 - When `show_cost` is on, each row's cost is the period cost (the same value as
-  the `Cost` chip) allocated pro-rata by energy: `cost_i = totalCost ×
-  value_i / Σroots`. Children plus `Untracked` therefore still sum to the
-  parent, and the root rows sum exactly to the chip.
+  the `Cost` chip) allocated pro-rata by **grid-billed energy**. Rows whose
+  entity is listed in `cost.zero_cost_entities` (solar-served loads) are free
+  and are removed from the allocation base, so they neither show a cost nor
+  dilute the rate applied to the remaining lines. Children plus `Untracked`
+  still sum to the parent, and the root rows sum exactly to the chip.
 - Area grouping uses `hass.entities` / `hass.devices` / `hass.areas`.
 - Boilerplate (colours, escaping, formatting, tree building, area lookup) is
   currently duplicated between the two source files; see the roadmap.
