@@ -230,7 +230,7 @@ class HierarchyPowerCard extends HTMLElement {
     const total = this._roots.reduce((s, r) => s + this._pval(r.rateId), 0);
     this._grandTotal = total;
     const push = (row, value, parentValue) => {
-      row.pct = (parentValue && parentValue > 0) ? (value / parentValue) * 100 : null;
+      row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       rows.push(row);
     };
     const walk = (node, depth, color, parentValue) => {
@@ -435,19 +435,27 @@ class HierarchyPowerCard extends HTMLElement {
       const rowIcon = r.kind === "area" ? '<ha-icon class="ric" icon="' + this._esc(r.icon || "mdi:floor-plan") + '"></ha-icon>' : "";
       const nameCls = (r.kind === "untracked" ? "name untracked-name" : "name") + (r.hasChildren ? " clickable" : "");
       const nameAttr = r.hasChildren ? ' data-toggle="' + this._esc(r.id) + '"' : "";
-      const pctHtml = (r.pct != null && this._showPctFor(r.kind, pctMode))
-        ? '<span class="pct" title="Share of parent">' + this._esc(this._fmtPct(r.pct)) + "</span>"
+      // Always reserve the percentage column while it is in use, so every row's
+      // track/bar has the same width. Emitting no cell let the track grow into
+      // the percentage column ("bar breaks through"), which showed up for a
+      // single-child area whose total is 0 (share undefined -> no cell).
+      const pctHtml = (pctMode !== "off")
+        ? '<span class="pct" title="Share of parent">' +
+            (this._showPctFor(r.kind, pctMode) ? (r.pct != null ? this._esc(this._fmtPct(r.pct)) : "\u2013") : "") +
+          "</span>"
         : "";
       const rowToggleAttr = (r.kind === "area" && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       const entityAttr = (r.kind === "node" && r.entity) ? ' data-entity="' + this._esc(r.entity) + '"' : "";
+      // Fade rows that display as zero so active loads stand out.
+      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
       return '<div class="' + cls + '"' + rowToggleAttr + entityAttr + '>' +
         '<div class="label" style="padding-left:' + indent + 'px">' + toggle + rowIcon +
-          '<span class="' + nameCls + '"' + nameAttr + ' title="' + this._esc(r.name) + '">' + this._esc(r.name) + "</span>" +
+          '<span class="' + nameCls + (valZero ? " zero" : "") + '"' + nameAttr + ' title="' + this._esc(r.name) + '">' + this._esc(r.name) + "</span>" +
         "</div>" +
         '<div class="barwrap">' +
           '<div class="track"><div class="bar" style="width:' + w.toFixed(2) + "%;background:" + color + '"></div></div>' +
           pctHtml +
-          '<div class="val">' + this._fmt(r.value) + (this._config.hide_unit_label ? "" : ' <span class="u">' + this._esc(this._config.unit) + "</span>") + "</div>" +
+          '<div class="val' + (valZero ? " zero" : "") + '">' + this._fmt(r.value) + (this._config.hide_unit_label ? "" : ' <span class="u">' + this._esc(this._config.unit) + "</span>") + "</div>" +
         "</div>" +
       "</div>";
     }).join("");
@@ -567,6 +575,7 @@ class HierarchyPowerCard extends HTMLElement {
       .row.untracked .bar { background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
       .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
       .val .u { font-size:0.75em; }
+      .val.zero, .name.zero { color: var(--disabled-text-color, #9e9e9e); }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
     `;
