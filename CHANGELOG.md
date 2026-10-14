@@ -7,8 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - `cost.zero_cost_entities` on the energy card: list entities (solar-served
-  loads) that are excluded from the cost allocation and shown as €0, so they no
-  longer skew the per-kWh rate applied to the grid-billed lines.
+  loads) that are excluded from the cost allocation and shown as `–` (en dash)
+  in the cost column, so they no longer skew the per-kWh rate applied to the
+  grid-billed lines.
+- Rows that display as zero fade to the disabled grey (name, value, and cost on
+  the energy card; name and value on the power card).
 - Per-row cost column on the energy card (`show_cost`, `cost_width`,
   `cost_decimals`, `cost_show_currency`): each row shows its pro-rata share of
   the period cost the `Cost` chip reports.
@@ -21,6 +24,9 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   and `getCardSize()` is computed from the visible row count. `5b38c2b`, `6e7c9a0`
 
 ### Fixed
+- Percentage column width is now reserved on every row, so a row whose share is
+  undefined (e.g. the only child of a zero-total area) no longer lets its bar
+  grow into the percentage column. Such rows show `0%` when the value is zero.
 - Removed hard-coded personal tariff sensors/prices from the energy card
   defaults; cost and tariff chips are now opt-in. `eb1a2ee`
 

@@ -209,7 +209,7 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `cost.peak_price` | number | `0` | Price per unit for the peak period. |
 | `cost.offpeak_price` | number | `0` | Price per unit for the off-peak period. |
 | `cost.unit` | string | `€` | Currency symbol. |
-| `cost.zero_cost_entities` | list | `[]` | Statistic/entity ids treated as zero cost (e.g. solar-served EV, hot water). Excluded from the cost allocation and shown as €0. Marking a parent zeroes its whole subtree. |
+| `cost.zero_cost_entities` | list | `[]` | Statistic/entity ids treated as zero cost (e.g. solar-served EV, hot water). Excluded from the cost allocation and shown as `–` in the cost column. Marking a parent zeroes its whole subtree. Rows displaying as zero fade to grey. |
 
 Cost and tariff chips appear only when at least one of
 `cost.peak_entity` / `cost.offpeak_entity` is set.
