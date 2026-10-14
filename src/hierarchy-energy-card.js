@@ -558,7 +558,7 @@ class HierarchyEnergyCard extends HTMLElement {
     this._hasCost = hasCost;
     this._costUnit = hasCost ? (summary.cost / costBase) : 0;
     const push = (row, value, parentValue, costValue) => {
-      row.pct = (parentValue && parentValue > 0) ? (value / parentValue) * 100 : null;
+      row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       row.cost = hasCost ? ((costValue || 0) * this._costUnit) : null;
       rows.push(row);
     };
@@ -567,6 +567,7 @@ class HierarchyEnergyCard extends HTMLElement {
       push({
         kind: "node", id: node.id, name: node.name, depth: depth,
         value: v, color: color, entity: node.id,
+        zeroCost: zeroCost.has(node.id),
         hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id)
       }, v, parentValue, weight.get(node.id));
       if (!node.children.length || !this._isExpanded(node.id)) return;
@@ -829,20 +830,34 @@ class HierarchyEnergyCard extends HTMLElement {
       const rowIcon = r.kind === "area" ? '<ha-icon class="ric" icon="' + this._esc(r.icon || "mdi:floor-plan") + '"></ha-icon>' : "";
       const nameCls = (r.kind === "untracked" ? "name untracked-name" : "name") + (r.hasChildren ? " clickable" : "");
       const nameAttr = r.hasChildren ? ' data-toggle="' + this._esc(r.id) + '"' : "";
-      const pctHtml = (r.pct != null && this._showPctFor(r.kind, pctMode))
-        ? '<span class="pct" title="Share of parent">' + this._esc(this._fmtPct(r.pct)) + "</span>"
+      // Always reserve the percentage column while it is in use, so every row's
+      // track/bar has the same width. Emitting no cell let the track grow into
+      // the percentage column ("bar breaks through"), which showed up for a
+      // single-child area whose total is 0 (share undefined -> no cell).
+      const pctHtml = (pctMode !== "off")
+        ? '<span class="pct" title="Share of parent">' +
+            (this._showPctFor(r.kind, pctMode) ? (r.pct != null ? this._esc(this._fmtPct(r.pct)) : "\u2013") : "") +
+          "</span>"
         : "";
       const rowToggleAttr = (r.kind === "area" && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       const entityAttr = (r.kind === "node" && r.entity) ? ' data-entity="' + this._esc(r.entity) + '"' : "";
+      // Fade rows that display as zero (kWh and/or cost) so the live lines stand out.
+      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
+      const costZero = (r.cost == null) || Math.abs(Number(r.cost) || 0) < 0.005;
+      const costHtml = showCost
+        ? (r.zeroCost
+            ? '<div class="cost na" title="Solar-served \u2014 excluded from cost">\u2013</div>'
+            : '<div class="cost' + (costZero ? " zero" : "") + '" title="Pro-rata share of the period cost">' + this._esc(this._fmtCost(r.cost)) + "</div>")
+        : "";
       return '<div class="' + cls + '"' + rowToggleAttr + entityAttr + '>' +
         '<div class="label" style="padding-left:' + indent + 'px">' + toggle + rowIcon +
-          '<span class="' + nameCls + '"' + nameAttr + ' title="' + this._esc(r.name) + '">' + this._esc(r.name) + "</span>" +
+          '<span class="' + nameCls + (valZero ? " zero" : "") + '"' + nameAttr + ' title="' + this._esc(r.name) + '">' + this._esc(r.name) + "</span>" +
         "</div>" +
         '<div class="barwrap">' +
           '<div class="track"><div class="bar" style="width:' + w.toFixed(2) + "%;background:" + color + '"></div></div>' +
           pctHtml +
-          '<div class="val">' + this._fmt(r.value) + (this._config.hide_unit_label ? "" : ' <span class="u">' + this._esc(this._config.unit) + "</span>") + "</div>" +
-          (showCost ? '<div class="cost" title="Pro-rata share of the period cost">' + this._esc(this._fmtCost(r.cost)) + "</div>" : "") +
+          '<div class="val' + (valZero ? " zero" : "") + '">' + this._fmt(r.value) + (this._config.hide_unit_label ? "" : ' <span class="u">' + this._esc(this._config.unit) + "</span>") + "</div>" +
+          costHtml +
         "</div>" +
       "</div>";
     }).join("");
@@ -965,6 +980,8 @@ class HierarchyEnergyCard extends HTMLElement {
       .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
       .val .u { font-size:0.75em; }
       .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--secondary-text-color); }
+      .val.zero, .name.zero, .cost.zero, .cost.na { color: var(--disabled-text-color, #9e9e9e); }
+      .cost.na { font-style: italic; }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
     `;
