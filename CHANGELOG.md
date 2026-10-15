@@ -10,6 +10,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   loads) that are excluded from the cost allocation and shown as `–` (en dash)
   in the cost column, so they no longer skew the per-kWh rate applied to the
   grid-billed lines.
+- **`first_level_sort_by` / `area_sort_by` / `entity_sort_by`** options
+  (`name` | `kwh` | `cost` | `tree`) replace `sort_siblings`. One per hierarchy
+  level: level-1 roots, area group rows, and entities inside an area; `cost` is
+  energy-only (the power card falls back to `kwh`). Zero rows always sink to the
+  bottom. Defaults: `first_level_sort_by: tree`, `area_sort_by: name`,
+  `entity_sort_by: kwh`.
 - Rows that display as zero fade to the disabled grey (name, value, and cost on
   the energy card; name, value and percentage on the power card; the percentage
   cell also fades on the energy card).
