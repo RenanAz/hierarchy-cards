@@ -154,7 +154,9 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `no_area_label` | string | `No area` | Label for devices without an area. |
 | `bar_scale` | string | `parent` | Bar length basis: `parent` (share of parent), `total` (share of grand total), `global` (share of largest row). |
 | `show_percent` | bool \| string | `false` | Show the percentage column: `true`/`all`, `areas`, `devices`, or `false`. |
-| `sort_siblings` | string | `tree` | `tree` (Energy-dashboard order) or `value` (largest first). |
+| `first_level_sort_by` | string | `tree` | Order of the **level-1 rows** (the top-level zones/devices). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
+| `area_sort_by` | string | `name` | Order of the **area group** rows (level 2). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
+| `entity_sort_by` | string | `kwh` | Order of **entities inside an area** (level 3+). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
 | `expanded_by_default` | bool | `true` | Expand device groups on first load. |
 | `expand_areas_by_default` | bool | `false` | Also expand area buckets on first load. |
 | `hide_zero` | bool | `false` | Hide rows at or below `zero_threshold`. |
@@ -182,7 +184,9 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `no_area_label` | string | `No area` | Label for devices without an area. |
 | `bar_scale` | string | `global` | `parent`, `total` or `global`. |
 | `show_percent` | bool \| string | `false` | `true`/`all`, `areas`, `devices`, or `false`. |
-| `sort_siblings` | string | `tree` | `tree` or `value`. |
+| `first_level_sort_by` | string | `tree` | Order of the **level-1 rows** (the top-level zones/devices). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
+| `area_sort_by` | string | `name` | Order of the **area group** rows (level 2). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
+| `entity_sort_by` | string | `kwh` | Order of **entities inside an area** (level 3+). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
 | `expanded_by_default` | bool | `true` | Expand device groups initially. |
 | `expand_areas_by_default` | bool | `false` | Also expand area buckets initially. |
 | `max_rows` | number | `300` | Row cap. |
@@ -234,6 +238,54 @@ cost:
     - sensor.ev_charger_energy
     - sensor.hot_water_energy
 ```
+
+### Ordering
+
+Three options control row order, one per hierarchy level, because they answer
+different questions:
+
+- **`first_level_sort_by`** — the **level-1 rows**: the top-level zones/devices
+  in your built-in `nodes:` config.
+- **`area_sort_by`** — the **area group rows** (level 2), the ones introduced by
+  `group_by_area`.
+- **`entity_sort_by`** — the **leaves inside an area** (level 3 and deeper).
+
+Each accepts:
+
+| Value | Meaning |
+|-------|---------|
+| `name` | A–Z, case-insensitive (locale-aware). |
+| `kwh` | Consumption, largest first. On the power card this is the live value (W). |
+| `cost` | Allocated cost, largest first. **Energy card only** — the power card has no cost column, so it falls back to `kwh`. |
+| `tree` | The order you wrote in the card's built-in `nodes:` config. Useful to hand-curate a fixed order. |
+
+Defaults:
+
+```yaml
+first_level_sort_by: tree   # your zones stay in the order you wrote them
+area_sort_by: name          # areas A-Z
+entity_sort_by: kwh         # largest consumption first within each area
+```
+
+The split is deliberate: most people write their zones in a meaningful fixed
+order, but want the loads *inside* an area ranked by size. Set any of them to
+`kwh`/`cost`/`name` to override.
+
+```yaml
+type: custom:hierarchy-energy-card
+group_by_area: true
+first_level_sort_by: tree   # zones in config order
+area_sort_by: name          # areas A-Z
+entity_sort_by: cost        # priciest entity first within each area
+```
+
+Notes:
+
+- Rows that display as zero always sort last within their group, regardless of
+  mode, so the live lines stay at the top.
+- `Untracked` remains the last child of its parent.
+- `cost` sorting follows the same pro-rata allocation as the cost column, so the
+  order matches what you see in the € values.
 
 ---
 

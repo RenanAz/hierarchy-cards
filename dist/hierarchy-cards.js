@@ -37,7 +37,9 @@ class HierarchyPowerCard extends HTMLElement {
       show_untracked: true,
       expanded_by_default: true,
       expand_areas_by_default: false,
-      sort_siblings: "tree",
+      area_sort_by: "name",
+      entity_sort_by: "kwh",
+      first_level_sort_by: "tree",
       untracked_label: "Untracked",
       no_area_label: "No area",
       group_by_area: false,
@@ -234,9 +236,11 @@ class HierarchyPowerCard extends HTMLElement {
 
   _flatten() {
     const rows = [];
-    const sortValue = this._config.sort_siblings === "value";
     const total = this._roots.reduce((s, r) => s + this._pval(r.rateId), 0);
     this._grandTotal = total;
+    const cmpEntity = this._entityComparator();
+    const cmpRoot = this._rootComparator();
+    const cmpArea = this._areaComparator();
     const push = (row, value, parentValue) => {
       row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       rows.push(row);
@@ -250,7 +254,7 @@ class HierarchyPowerCard extends HTMLElement {
       }, v, parentValue);
       if (!node.children.length || !this._isExpanded(node.id)) return;
       let kids = node.children.slice();
-      if (sortValue) kids.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+      if (cmpEntity) kids.sort(cmpEntity);
       if (this._config.group_by_area) {
         const buckets = new Map();
         for (const k of kids) {
@@ -267,12 +271,11 @@ class HierarchyPowerCard extends HTMLElement {
         }
         if (ownBucket) {
           let ok = ownBucket.kids.slice();
-          if (sortValue) ok.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+          if (cmpEntity) ok.sort(cmpEntity);
           ok.forEach((k) => walk(k, depth + 1, color, v));
         }
         const list = Array.from(buckets.values());
-        if (sortValue) list.sort((a, b) => b.sum - a.sum);
-        else list.sort((a, b) => a.name.localeCompare(b.name));
+        if (cmpArea) list.sort(cmpArea);
         for (const b of list) {
           const gid = node.id + "|area|" + b.key;
           const gexp = this._isExpanded(gid);
@@ -295,7 +298,7 @@ class HierarchyPowerCard extends HTMLElement {
       }
     };
     let roots = this._roots.slice();
-    if (sortValue) roots.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+    if (cmpRoot) roots.sort(cmpRoot);
     roots.forEach((r, i) => walk(r, 0, HPC_PALETTE[i % HPC_PALETTE.length], total));
     return rows;
   }
@@ -414,6 +417,56 @@ class HierarchyPowerCard extends HTMLElement {
     else if (scale === "total") pct = (this._grandTotal > 0) ? (r.value / this._grandTotal) * 100 : 0;
     else pct = (max > 0) ? (r.value / max) * 100 : 0;
     return Math.max(0, Math.min(100, pct));
+  }
+
+  // Ordering. Three independent user-facing knobs, each one of:
+  //   name  — A-Z (locale-aware)
+  //   kwh   — value/watts, largest first
+  //   cost  — not available on the power card, so it falls back to kwh
+  //   tree  — the order written in the card's `nodes:` config
+  //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
+  //   - `area_sort_by` orders the area *group* rows (level 2).
+  //   - `entity_sort_by` orders leaves inside an area (level 3+).
+  // Each returns a compare function, or null for "tree"/unknown, which callers
+  // treat as "leave as written".
+  _sortMode(value, fallback) {
+    const v = (value == null ? "" : String(value)).toLowerCase();
+    if (v === "name" || v === "kwh" || v === "cost" || v === "tree") return v;
+    return fallback;
+  }
+
+  // Build a node comparator for the given mode over nodes with `name`+`rateId`.
+  _nodeComparator(mode, valueOf) {
+    if (mode === "tree") return null;
+    const inner = (mode === "name")
+      ? (a, b) => a.name.localeCompare(b.name)
+      : (a, b) => (valueOf(b) - valueOf(a)) || a.name.localeCompare(b.name);
+    const zero = (n) => valueOf(n) * this._displayFactor() < 0.005;
+    // Zero rows always sink to the bottom so the active loads stay on top.
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
+  }
+
+  _entityComparator() {
+    // cost is meaningless here (no cost series) -> kwh.
+    const mode = this._sortMode(this._config.entity_sort_by, "kwh");
+    return this._nodeComparator(mode === "cost" ? "kwh" : mode, (n) => this._pval(n.rateId));
+  }
+
+  // Level-1 roots. Kept separate from entity sorting so a user can hand-order
+  // their zones (`tree`) while leaves still sort by consumption.
+  _rootComparator() {
+    const mode = this._sortMode(this._config.first_level_sort_by, "tree");
+    return this._nodeComparator(mode === "cost" ? "kwh" : mode, (n) => this._pval(n.rateId));
+  }
+
+  _areaComparator() {
+    const mode = this._sortMode(this._config.area_sort_by, "name");
+    if (mode === "tree") return null;
+    const zero = (b) => (b.sum || 0) * this._displayFactor() < 0.005;
+    const inner = (mode === "name")
+      ? (a, b) => a.name.localeCompare(b.name)
+      : (a, b) => ((b.sum || 0) - (a.sum || 0)) || a.name.localeCompare(b.name);
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
   }
 
   // Row indent. The first two levels step by a fixed amount; from the third
@@ -674,7 +727,9 @@ class HierarchyEnergyCard extends HTMLElement {
       show_untracked: true,
       expanded_by_default: true,
       expand_areas_by_default: false,
-      sort_siblings: "tree",
+      area_sort_by: "name",
+      entity_sort_by: "kwh",
+      first_level_sort_by: "tree",
       untracked_label: "Untracked",
       no_area_label: "No area",
       group_by_area: false,
@@ -1152,9 +1207,73 @@ class HierarchyEnergyCard extends HTMLElement {
     return "off";
   }
 
+  // Ordering. Three independent user-facing knobs, each one of:
+  //   name  — A-Z (locale-aware)
+  //   kwh   — value/consumption, largest first
+  //   cost  — allocated cost, largest first (energy card; falls back to kwh)
+  //   tree  — the order written in the card's `nodes:` config
+  //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
+  //   - `area_sort_by` orders the area *group* rows (level 2).
+  //   - `entity_sort_by` orders leaves inside an area (level 3+).
+  // Each returns a compare function, or null for "tree"/unknown, which callers
+  // treat as "leave as written".
+  _sortMode(value, fallback) {
+    const v = (value == null ? "" : String(value)).toLowerCase();
+    if (v === "name" || v === "kwh" || v === "cost" || v === "tree") return v;
+    return fallback;
+  }
+
+  // Build a node comparator for the given mode over rows/nodes with `id`+`name`.
+  _nodeComparator(mode, zeroOf) {
+    if (mode === "tree") return null;
+    let inner;
+    if (mode === "name") {
+      inner = (a, b) => a.name.localeCompare(b.name);
+    } else if (mode === "cost") {
+      const unit = this._costUnit;
+      const w = this._weight;
+      inner = (a, b) => (((w.get(b.id) || 0) - (w.get(a.id) || 0)) * unit) || a.name.localeCompare(b.name);
+    } else {
+      inner = (a, b) => ((this._totals[b.id] || 0) - (this._totals[a.id] || 0)) || a.name.localeCompare(b.name);
+    }
+    if (!zeroOf) return inner;
+    // Zero rows always sink to the bottom so the live lines stay on top.
+    const zero = (n) => zeroOf(n) * this._displayFactor() < 0.005;
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
+  }
+
+  _entityComparator() {
+    let mode = this._sortMode(this._config.entity_sort_by, "kwh");
+    // No cost series on this card (or card has no cost): fall back to value.
+    if (mode === "cost" && !this._hasCost) mode = "kwh";
+    return this._nodeComparator(mode, (n) => this._totals[n.id] || 0);
+  }
+
+  // Level-1 roots. Kept separate from entity sorting so a user can hand-order
+  // their zones (`tree`) while leaves still sort by consumption.
+  _rootComparator() {
+    let mode = this._sortMode(this._config.first_level_sort_by, "tree");
+    if (mode === "cost" && !this._hasCost) mode = "kwh";
+    return this._nodeComparator(mode, (n) => this._totals[n.id] || 0);
+  }
+
+  _areaComparator() {
+    const mode = this._sortMode(this._config.area_sort_by, "name");
+    if (mode === "tree") return null;
+    const zero = (b) => (b.sum || 0) * this._displayFactor() < 0.005;
+    let inner;
+    if (mode === "name") {
+      inner = (a, b) => a.name.localeCompare(b.name);
+    } else if (mode === "cost" && this._hasCost) {
+      inner = (a, b) => ((b.cost || 0) - (a.cost || 0)) || a.name.localeCompare(b.name);
+    } else {
+      inner = (a, b) => ((b.sum || 0) - (a.sum || 0)) || a.name.localeCompare(b.name);
+    }
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
+  }
+
   _flatten() {
     const rows = [];
-    const sortValue = this._config.sort_siblings === "value";
     const total = this._roots.reduce((s, r) => s + (this._totals[r.id] || 0), 0);
     this._grandTotal = total;
     // Per-row cost is a pro-rata allocation of the whole-period cost the card
@@ -1191,6 +1310,10 @@ class HierarchyEnergyCard extends HTMLElement {
     const hasCost = typeof summary.cost === "number" && isFinite(summary.cost) && costBase > 0;
     this._hasCost = hasCost;
     this._costUnit = hasCost ? (summary.cost / costBase) : 0;
+    this._weight = weight;
+    const cmpEntity = this._entityComparator();
+    const cmpRoot = this._rootComparator();
+    const cmpArea = this._areaComparator();
     const push = (row, value, parentValue, costValue) => {
       row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       row.cost = hasCost ? ((costValue || 0) * this._costUnit) : null;
@@ -1206,7 +1329,7 @@ class HierarchyEnergyCard extends HTMLElement {
       }, v, parentValue, weight.get(node.id));
       if (!node.children.length || !this._isExpanded(node.id)) return;
       let kids = node.children.slice();
-      if (sortValue) kids.sort((a, b) => (this._totals[b.id] || 0) - (this._totals[a.id] || 0));
+      if (cmpEntity) kids.sort(cmpEntity);
       if (this._config.group_by_area) {
         const buckets = new Map();
         for (const k of kids) {
@@ -1226,12 +1349,12 @@ class HierarchyEnergyCard extends HTMLElement {
         }
         if (ownBucket) {
           let ok = ownBucket.kids.slice();
-          if (sortValue) ok.sort((a, b) => (this._totals[b.id] || 0) - (this._totals[a.id] || 0));
+          if (cmpEntity) ok.sort(cmpEntity);
           ok.forEach((k) => walk(k, depth + 1, color, v));
         }
         const list = Array.from(buckets.values());
-        if (sortValue) list.sort((a, b) => b.sum - a.sum);
-        else list.sort((a, b) => a.name.localeCompare(b.name));
+        for (const b of list) b.cost = b.weight * this._costUnit;
+        if (cmpArea) list.sort(cmpArea);
         for (const b of list) {
           const gid = node.id + "|area|" + b.key;
           const gexp = this._isExpanded(gid);
@@ -1254,7 +1377,7 @@ class HierarchyEnergyCard extends HTMLElement {
       }
     };
     let roots = this._roots.slice();
-    if (sortValue) roots.sort((a, b) => (this._totals[b.id] || 0) - (this._totals[a.id] || 0));
+    if (cmpRoot) roots.sort(cmpRoot);
     roots.forEach((r, i) => walk(r, 0, HEC_PALETTE[i % HEC_PALETTE.length], total));
     return rows;
   }
