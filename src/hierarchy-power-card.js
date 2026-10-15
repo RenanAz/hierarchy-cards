@@ -95,17 +95,19 @@ class HierarchyPowerCard extends HTMLElement {
       expand_areas_by_default: "Expand areas on load", id: "Card ID"
     };
     const helpers = {
-      bar_scale: "Bar length basis.",
-      show_percent: "Off, all rows, or only area/device rows.",
+      content: "Card heading and the unit used for the totals and rows.",
+      tree: "What the indented breakdown shows, how untracked rows are handled, and which near-zero rows are hidden.",
+      ordering: "How zones, area rows and the entities inside each area are ordered.",
+      visual: "Bar length basis, the percentage column, column widths and default expansion.",
+      summary: "The summary chips above the tree. Grid export can be hidden when you only import.",
+      advanced: "Refresh cadence and other rarely changed settings."
+    };
+    const fieldHelpers = {
       label_width: "CSS size, e.g. 30% or 130px.",
       value_width: "CSS size, e.g. 50px.",
       percent_width: "CSS size, e.g. 25px.",
       update_interval: "Minimum seconds between re-renders, to tame noisy sensors.",
-      hide_zero: "Hide rows at or below the zero threshold.",
       zero_threshold: "Value at or below which rows are hidden (when enabled above).",
-      first_level_sort_by: "How the top-level zones are ordered.",
-      area_sort_by: "How the area group rows are ordered.",
-      entity_sort_by: "How entities inside each area are ordered.",
       id: "Stable key for remembering expand/collapse; set it if two cards share a title."
     };
     return {
@@ -114,10 +116,7 @@ class HierarchyPowerCard extends HTMLElement {
           type: "expandable", name: "content", title: "Content", flatten: true,
           schema: [
             { name: "title", selector: { text: {} } },
-            { name: "unit", selector: { select: { options: ["W", "kW", "MW"] } } },
-            { name: "show_summary", selector: { boolean: {} } },
-            { name: "max_rows", selector: { number: { min: 1, mode: "box" } } },
-            { name: "update_interval", selector: { number: { min: 0, mode: "box", step: 0.5 } } }
+            { name: "unit", selector: { select: { options: ["W", "kW", "MW"] } } }
           ]
         },
         {
@@ -128,7 +127,7 @@ class HierarchyPowerCard extends HTMLElement {
             { name: "show_untracked", selector: { boolean: {} } },
             { name: "untracked_label", selector: { text: {} } },
             { name: "no_area_label", selector: { text: {} } },
-            { name: "grid_show_out", selector: { boolean: {} } },
+            { name: "max_rows", selector: { number: { min: 1, mode: "box" } } },
             { name: "hide_zero", selector: { boolean: {} } },
             { name: "zero_threshold", selector: { number: { min: 0, mode: "box", step: 0.1 } } }
           ]
@@ -155,14 +154,22 @@ class HierarchyPowerCard extends HTMLElement {
           ]
         },
         {
+          type: "expandable", name: "summary", title: "Summary", flatten: true,
+          schema: [
+            { name: "show_summary", selector: { boolean: {} } },
+            { name: "grid_show_out", selector: { boolean: {} } }
+          ]
+        },
+        {
           type: "expandable", name: "advanced", title: "Advanced", flatten: true,
           schema: [
-            { name: "id", selector: { text: {} } }
+            { name: "id", selector: { text: {} } },
+            { name: "update_interval", selector: { number: { min: 0, mode: "box", step: 0.5 } } }
           ]
         }
       ],
       computeLabel: (s) => labels[s.name],
-      computeHelper: (s) => helpers[s.name]
+      computeHelper: (s) => helpers[s.name] ?? fieldHelpers[s.name]
     };
   }
 
@@ -285,11 +292,14 @@ class HierarchyPowerCard extends HTMLElement {
   _areaExpandableIds() {
     const ids = [];
     if (!this._config.group_by_area) return ids;
+    const rootIds = new Set(this._roots.map((r) => r.id));
     for (const node of this._byId.values()) {
       if (!node.children.length) continue;
       const keys = new Set();
       for (const c of node.children) keys.add(this._areaOf(c.rateId || c.id).key);
-      if (this._config.suppress_parent_area !== false) keys.delete(this._areaOf(node.rateId || node.id).key);
+      if (this._config.suppress_parent_area !== false && !rootIds.has(node.id)) {
+        keys.delete(this._areaOf(node.rateId || node.id).key);
+      }
       for (const k of keys) ids.push(node.id + "|area|" + k);
     }
     return ids;
@@ -347,7 +357,7 @@ class HierarchyPowerCard extends HTMLElement {
       row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       rows.push(row);
     };
-    const walk = (node, depth, color, parentValue) => {
+    const walk = (node, depth, color, parentValue, enclosingKey) => {
       const v = this._pval(node.rateId);
       push({
         kind: "node", id: node.id, name: node.name, depth: depth,
@@ -366,15 +376,17 @@ class HierarchyPowerCard extends HTMLElement {
         }
         for (const b of buckets.values()) b.sum = b.kids.reduce((s, k) => s + this._pval(k.rateId), 0);
         let ownBucket = null;
-        if (this._config.suppress_parent_area !== false) {
+        if (this._config.suppress_parent_area !== false && enclosingKey !== null) {
           const ownKey = this._areaOf(node.rateId || node.id).key;
-          ownBucket = buckets.get(ownKey) || null;
-          if (ownBucket) buckets.delete(ownKey);
+          if (ownKey === enclosingKey) {
+            ownBucket = buckets.get(ownKey) || null;
+            if (ownBucket) buckets.delete(ownKey);
+          }
         }
         if (ownBucket) {
           let ok = ownBucket.kids.slice();
           if (cmpEntity) ok.sort(cmpEntity);
-          ok.forEach((k) => walk(k, depth + 1, color, v));
+          ok.forEach((k) => walk(k, depth + 1, color, v, enclosingKey));
         }
         const list = Array.from(buckets.values());
         if (cmpArea) list.sort(cmpArea);
@@ -385,10 +397,10 @@ class HierarchyPowerCard extends HTMLElement {
             kind: "area", id: gid, name: b.name, depth: depth + 1,
             value: b.sum, color: this._tint(color, depth + 1), hasChildren: true, expanded: gexp, icon: b.icon
           }, b.sum, v);
-          if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum));
+          if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum, b.key));
         }
       } else {
-        kids.forEach((k) => walk(k, depth + 1, color, v));
+        kids.forEach((k) => walk(k, depth + 1, color, v, null));
       }
       if (this._config.show_untracked) {
         const u = this._untracked(node);
@@ -401,7 +413,7 @@ class HierarchyPowerCard extends HTMLElement {
     };
     let roots = this._roots.slice();
     if (cmpRoot) roots.sort(cmpRoot);
-    roots.forEach((r, i) => walk(r, 0, HPC_PALETTE[i % HPC_PALETTE.length], total));
+    roots.forEach((r, i) => walk(r, 0, HPC_PALETTE[i % HPC_PALETTE.length], total, null));
     return rows;
   }
 
@@ -435,10 +447,11 @@ class HierarchyPowerCard extends HTMLElement {
     chips.push({ k: "Total", v: this._fmt(s.total) + us, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
     if (s.grid) {
       const g = s.grid.net;
+      const showOut = this._config.grid_show_out !== false;
       let v;
-      if (g < 0) v = this._fmt(-g) + us + " in";
+      if (g < 0) v = this._fmt(-g) + us + (showOut ? " in" : "");
+      else if (!showOut) v = "0" + us;
       else v = this._fmt(g) + us + " out";
-      if (this._config.grid_show_out === false && g > 0) v = "0" + us;
       chips.push({ k: "Grid", e: s.grid.entity, v: v, icon: g < 0 ? "mdi:transmission-tower-import" : "mdi:transmission-tower-export", color: "#e15759" });
     }
     if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, v: this._fmt(s.solar.prod) + us, icon: "mdi:solar-power", color: "#edc948" });

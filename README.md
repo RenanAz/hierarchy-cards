@@ -140,9 +140,10 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 ## Configuration
 
 Both cards have a **visual editor** in the dashboard (add/edit the card), with
-options grouped into Content / Tree / Ordering / Visual / Chips / Cost /
-Advanced panels. The tables below list the same options for hand-written YAML;
-any key you add in YAML is preserved by the visual editor.
+options grouped into Content / Tree / Ordering / Visual / Summary chips /
+Cost column / Cost sources / Advanced panels (the power card has no cost panels,
+and its summary lives in a Summary panel). The tables below list the same options
+for hand-written YAML; any key you add in YAML is preserved by the visual editor.
 
 ### `custom:hierarchy-power-card`
 
@@ -153,7 +154,7 @@ any key you add in YAML is preserved by the visual editor.
 | `id` | string | title | Stable key used to remember expanded/collapsed rows in `localStorage`. Set it if you use two power cards with the same title. |
 | `show_summary` | bool | `true` | Show the summary chips (Total / Grid / Solar / Battery / SOC). |
 | `group_by_area` | bool | `false` | Group a device's children into collapsible area buckets. |
-| `suppress_parent_area` | bool | `true` | When grouping by area, don't create a bucket for the parent's own area (avoids echoing the parent). |
+| `suppress_parent_area` | bool | `true` | When grouping by area, don't nest an area bucket inside the same area again (keeps the top-level area group; avoids echoing the parent). |
 | `show_untracked` | bool | `true` | Show the "parent minus children" remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
@@ -172,7 +173,7 @@ any key you add in YAML is preserved by the visual editor.
 | `value_width` | string | `68px` | CSS width of the value column. |
 | `percent_width` | string | `34px` | CSS width of the percentage column. |
 | `hide_unit_label` | bool | `false` | Hide the unit suffix next to values. |
-| `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. |
+| `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. When off, only the import figure is shown. |
 
 ### `custom:hierarchy-energy-card`
 
@@ -183,7 +184,7 @@ any key you add in YAML is preserved by the visual editor.
 | `id` | string | title | Stable key for remembering expanded/collapsed rows. |
 | `show_summary` | bool | `true` | Show summary chips. |
 | `group_by_area` | bool | `false` | Group children into collapsible area buckets. |
-| `suppress_parent_area` | bool | `true` | Don't create a bucket for the parent's own area. |
+| `suppress_parent_area` | bool | `true` | Don't nest an area bucket inside the same area again (keeps the top-level group). |
 | `show_untracked` | bool | `true` | Show the remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
@@ -202,13 +203,12 @@ any key you add in YAML is preserved by the visual editor.
 | `cost_decimals` | number | `2` | Decimals shown in the cost column. |
 | `cost_show_currency` | bool | `true` | Append the `cost.unit` symbol to each cost value. |
 | `show_tariff` | bool | `false` | Show the off-peak / peak split chip (needs `cost` entities). |
-| `tariff_offpeak_label` | string | `Vazio` | Off-peak label. |
-| `tariff_peak_label` | string | `Fora` | Peak label. |
+| `tariff_offpeak_label` | string | `Off-peak` | Off-peak band name, shown on the tariff chip. |
+| `tariff_peak_label` | string | `Peak` | Peak band name, shown on the tariff chip. |
 | `tariff_decimals` | number | `1` | Decimals in the tariff chip. |
 | `tariff_show_percent` | bool | `true` | Show each tariff band's percentage. |
 | `show_grid_battery` | bool | `true` | Show the "Grid to Batt" chip. |
-| `grid_battery_entity` | string \| null | `null` | A real grid→battery energy sensor. If unset and `grid_battery_estimate` is on, it is estimated as `min(battery charge, grid import)`. |
-| `grid_battery_estimate` | bool | `true` | Allow the estimate when no entity is set. |
+| `grid_battery_entity` | string \| null | `null` | A real grid→battery energy sensor. The chip is hidden when unset. |
 | `grid_battery_label` | string | `Grid to Batt` | Chip label. |
 | `show_water` | bool | `true` | Show the water chip when the Energy dashboard has water. |
 | `water_label` | string | `Water` | Water chip label. |
@@ -331,8 +331,8 @@ These are the reasons this is pre-release rather than release-ready:
    an error message instead of degrading.
 4. **Polling.** The Energy card polls the collection every 500 ms while mounted.
 5. **Partial localisation.** Several strings are hard-coded English
-   ("Total", "Untracked", "Collapse all", …) and the `Vazio`/`Fora` tariff
-   labels are Portugal-specific defaults.
+   ("Total", "Untracked", "Collapse all", …); the tariff band labels default to
+   `Off-peak` / `Peak` and can be renamed per card.
 6. **`hide_zero` / `zero_threshold` are inert on the Energy card.** They are
    referenced in `getCardSize()` but not applied by the render path.
 7. **Flat tree without hierarchy.** The tree only nests if you set
@@ -354,7 +354,7 @@ These are the reasons this is pre-release rather than release-ready:
 - [ ] Extract shared code into `src/shared.js` and switch the build to esbuild.
 - [x] Add a visual config editor + `getStubConfig()`. (HA built-in form editor
       via `getConfigForm()`, grouped into Content / Tree / Ordering / Visual /
-      Chips / Cost / Advanced panels.)
+      Summary chips / Cost column / Cost sources / Advanced panels.)
 - [ ] Replace the internal-collection scan with a supported data path (or a
       clearly documented fallback).
 - [ ] Handle non-admin users gracefully.
@@ -373,7 +373,7 @@ These are the reasons this is pre-release rather than release-ready:
 - [ ] Set the GitHub repo **description** and **topics** (`home-assistant`,
       `lovelace`, `hacs`, `custom-card`, `energy`). The `Validate` workflow's
       `description` and `topics` checks fail until this is done.
-- [ ] Tag and publish a release (`v0.1.0`); HACS reads *releases*, not just tags.
+- [x] Tag and publish a release (`v1.0.0`); HACS reads *releases*, not just tags.
 - [ ] Decide whether to do the roadmap refactors before requesting inclusion in
       the default HACS store.
 
