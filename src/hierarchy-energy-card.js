@@ -566,7 +566,7 @@ class HierarchyEnergyCard extends HTMLElement {
       const v = this._totals[node.id] || 0;
       push({
         kind: "node", id: node.id, name: node.name, depth: depth,
-        value: v, color: color, entity: node.id,
+        value: v, color: this._tint(color, depth), entity: node.id,
         zeroCost: zeroCost.has(node.id),
         hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id)
       }, v, parentValue, weight.get(node.id));
@@ -603,7 +603,7 @@ class HierarchyEnergyCard extends HTMLElement {
           const gexp = this._isExpanded(gid);
           push({
             kind: "area", id: gid, name: b.name, depth: depth + 1,
-            value: b.sum, color: color, hasChildren: true, expanded: gexp, icon: b.icon
+            value: b.sum, color: this._tint(color, depth + 1), hasChildren: true, expanded: gexp, icon: b.icon
           }, b.sum, v, b.weight);
           if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum));
         }
@@ -749,12 +749,16 @@ class HierarchyEnergyCard extends HTMLElement {
     return (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  _fmtCost(v) {
+  _fmtCostNumber(v) {
     let dg = Number(this._config.cost_decimals);
     if (!isFinite(dg) || dg < 0) dg = 2;
     dg = Math.min(4, Math.round(dg));
     const n = Number(v) || 0;
-    const num = n.toLocaleString(undefined, { minimumFractionDigits: dg, maximumFractionDigits: dg });
+    return n.toLocaleString(undefined, { minimumFractionDigits: dg, maximumFractionDigits: dg });
+  }
+
+  _fmtCost(v) {
+    const num = this._fmtCostNumber(v);
     if (this._config.cost_show_currency === false) return num;
     const unit = (this._config.cost && this._config.cost.unit) || "\u20ac";
     return num + " " + unit;
@@ -788,6 +792,21 @@ class HierarchyEnergyCard extends HTMLElement {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
+  }
+
+  // Fade a zone's palette colour as it is reused further down the tree, so the
+  // hue still identifies the zone branch while depth reads at a glance. Alpha is
+  // blended by the browser against whatever is behind the bar (track/card), so
+  // it works on both light and dark themes.
+  _tint(color, depth) {
+    if (!depth || typeof color !== "string" || color.charAt(0) !== "#") return color;
+    let hex = color.slice(1);
+    if (hex.length === 3) hex = hex.replace(/./g, (c) => c + c);
+    const n = parseInt(hex, 16);
+    if (!isFinite(n)) return color;
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const a = Math.max(0.3, 1 - depth * 0.25);
+    return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")";
   }
 
   _showPctFor(kind, pctMode) {
@@ -830,24 +849,27 @@ class HierarchyEnergyCard extends HTMLElement {
       const rowIcon = r.kind === "area" ? '<ha-icon class="ric" icon="' + this._esc(r.icon || "mdi:floor-plan") + '"></ha-icon>' : "";
       const nameCls = (r.kind === "untracked" ? "name untracked-name" : "name") + (r.hasChildren ? " clickable" : "");
       const nameAttr = r.hasChildren ? ' data-toggle="' + this._esc(r.id) + '"' : "";
+      // Fade rows that display as zero (kWh and/or cost) so the live lines stand out.
+      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
       // Always reserve the percentage column while it is in use, so every row's
       // track/bar has the same width. Emitting no cell let the track grow into
       // the percentage column ("bar breaks through"), which showed up for a
       // single-child area whose total is 0 (share undefined -> no cell).
       const pctHtml = (pctMode !== "off")
-        ? '<span class="pct" title="Share of parent">' +
+        ? '<span class="pct' + (valZero ? " zero" : "") + '" title="Share of parent">' +
             (this._showPctFor(r.kind, pctMode) ? (r.pct != null ? this._esc(this._fmtPct(r.pct)) : "\u2013") : "") +
           "</span>"
         : "";
       const rowToggleAttr = (r.kind === "area" && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       const entityAttr = (r.kind === "node" && r.entity) ? ' data-entity="' + this._esc(r.entity) + '"' : "";
-      // Fade rows that display as zero (kWh and/or cost) so the live lines stand out.
-      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
       const costZero = (r.cost == null) || Math.abs(Number(r.cost) || 0) < 0.005;
+      const costUnit = (this._config.cost && this._config.cost.unit) || "\u20ac";
+      const costInner = this._esc(this._fmtCostNumber(r.cost)) +
+        (this._config.cost_show_currency === false ? "" : ' <span class="u">' + this._esc(costUnit) + "</span>");
       const costHtml = showCost
         ? (r.zeroCost
             ? '<div class="cost na" title="Solar-served \u2014 excluded from cost">\u2013</div>'
-            : '<div class="cost' + (costZero ? " zero" : "") + '" title="Pro-rata share of the period cost">' + this._esc(this._fmtCost(r.cost)) + "</div>")
+            : '<div class="cost' + (costZero ? " zero" : "") + '" title="Pro-rata share of the period cost">' + costInner + "</div>")
         : "";
       return '<div class="' + cls + '"' + rowToggleAttr + entityAttr + '>' +
         '<div class="label" style="padding-left:' + indent + 'px">' + toggle + rowIcon +
@@ -980,8 +1002,9 @@ class HierarchyEnergyCard extends HTMLElement {
       .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
       .val .u { font-size:0.75em; }
       .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--secondary-text-color); }
-      .val.zero, .name.zero, .cost.zero, .cost.na { color: var(--disabled-text-color, #9e9e9e); }
+      .val.zero, .name.zero, .cost.zero, .cost.na, .pct.zero { color: var(--disabled-text-color, #9e9e9e); }
       .cost.na { font-style: italic; }
+      .cost .u { font-size:0.75em; }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
     `;
