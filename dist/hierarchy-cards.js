@@ -1,4 +1,4 @@
-/*! hierarchy-cards v1.0.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
+/*! hierarchy-cards v1.1.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
  *  Source: src/hierarchy-power-card.js, src/hierarchy-energy-card.js
  *  License: MIT */
 
@@ -45,6 +45,7 @@ class HierarchyPowerCard extends HTMLElement {
       group_by_area: false,
       suppress_parent_area: true,
       grid_show_out: true,
+      chip_io_style: "arrows",
       show_percent: false,
       bar_scale: "parent",
       show_summary: true,
@@ -94,6 +95,7 @@ class HierarchyPowerCard extends HTMLElement {
       group_by_area: "Group by area", suppress_parent_area: "Hide parent's own area",
       show_untracked: "Show untracked row", untracked_label: "Untracked label",
       no_area_label: "No-area label", grid_show_out: "Show grid export",
+      chip_io_style: "In/out display",
       hide_zero: "Hide zero rows", zero_threshold: "Zero threshold",
       first_level_sort_by: "Level 1 (zones) order", area_sort_by: "Area rows order",
       entity_sort_by: "Entities-in-area order", bar_scale: "Bar scale",
@@ -114,6 +116,7 @@ class HierarchyPowerCard extends HTMLElement {
       label_width: "CSS size, e.g. 30% or 130px.",
       value_width: "CSS size, e.g. 50px.",
       percent_width: "CSS size, e.g. 25px.",
+      chip_io_style: "Show energy direction as arrows or the words in / out.",
       update_interval: "Minimum seconds between re-renders, to tame noisy sensors.",
       zero_threshold: "Value at or below which rows are hidden (when enabled above).",
       id: "Stable key for remembering expand/collapse; set it if two cards share a title."
@@ -165,7 +168,14 @@ class HierarchyPowerCard extends HTMLElement {
           type: "expandable", name: "summary", title: "Summary", flatten: true,
           schema: [
             { name: "show_summary", selector: { boolean: {} } },
-            { name: "grid_show_out", selector: { boolean: {} } }
+            { name: "grid_show_out", selector: { boolean: {} } },
+            {
+              name: "chip_io_style",
+              selector: { select: { options: [
+                { value: "arrows", label: "Arrows" },
+                { value: "words", label: "in / out" }
+              ] } }
+            }
           ]
         },
         {
@@ -450,37 +460,41 @@ class HierarchyPowerCard extends HTMLElement {
     if (!this._config.show_summary || !this._byId.size) return "";
     const s = this._summary();
     const u = this._config.unit;
-    const us = this._config.hide_unit_label ? "" : (" " + u);
+    const uspan = this._config.hide_unit_label ? "" : " " + this._uSpan(u);
+    const io = (dir) => (this._config.chip_io_style === "words")
+      ? dir
+      : (dir === "in" ? "\u2193" : "\u2191");
+    const num = (x) => this._esc(this._fmt(x));
     const chips = [];
-    chips.push({ k: "Total", v: this._fmt(s.total) + us, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
+    chips.push({ k: "Total", vHtml: num(s.total) + uspan, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
     if (s.grid) {
       const g = s.grid.net;
       const showOut = this._config.grid_show_out !== false;
-      let v;
-      if (g < 0) v = this._fmt(-g) + us + (showOut ? " in" : "");
-      else if (!showOut) v = "0" + us;
-      else v = this._fmt(g) + us + " out";
-      chips.push({ k: "Grid", e: s.grid.entity, v: v, icon: g < 0 ? "mdi:transmission-tower-import" : "mdi:transmission-tower-export", color: "#e15759" });
+      let vHtml;
+      if (g < 0) vHtml = num(-g) + uspan + (showOut ? " " + io("in") : "");
+      else if (!showOut) vHtml = this._esc("0") + uspan;
+      else vHtml = num(g) + uspan + " " + io("out");
+      chips.push({ k: "Grid", e: s.grid.entity, vHtml: vHtml, icon: g < 0 ? "mdi:transmission-tower-import" : "mdi:transmission-tower-export", color: "#e15759" });
     }
-    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, v: this._fmt(s.solar.prod) + us, icon: "mdi:solar-power", color: "#edc948" });
+    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, vHtml: num(s.solar.prod) + uspan, icon: "mdi:solar-power", color: "#edc948" });
     if (s.battery) {
       const net = s.battery.charge - s.battery.discharge;
-      const v = net >= 0
-        ? this._fmt(s.battery.charge) + us + " in"
-        : this._fmt(s.battery.discharge) + us + " out";
-      chips.push({ k: "Battery", e: s.battery.entity, v: v, icon: "mdi:battery-charging", color: "#59a14f" });
+      const vHtml = net >= 0
+        ? '<span class="io in">' + num(s.battery.charge) + uspan + " " + io("in") + "</span>"
+        : '<span class="io out">' + num(s.battery.discharge) + uspan + " " + io("out") + "</span>";
+      chips.push({ k: "Battery", e: s.battery.entity, vHtml: vHtml, icon: "mdi:battery-charging", color: "#59a14f" });
     }
     if (s.soc != null) {
       const soc = Math.round(s.soc);
       const lvl = Math.max(0, Math.min(100, Math.round(soc / 10) * 10));
       const socIcon = lvl === 0 ? "mdi:battery-outline" : lvl === 100 ? "mdi:battery" : "mdi:battery-" + lvl;
-      chips.push({ k: "SOC", e: s.socEntity, v: soc + " %", icon: socIcon, color: "#59a14f" });
+      chips.push({ k: "SOC", e: s.socEntity, vHtml: this._esc(String(soc)) + " " + this._uSpan("%"), icon: socIcon, color: "#59a14f" });
     }
     if (!chips.length) return "";
     return '<div class="summary">' + chips.map((c) =>
       '<div class="chip" style="--chip-color:' + c.color + '"' + (c.e ? ' data-entity="' + this._esc(c.e) + '"' : "") + (c.t ? ' title="' + this._esc(c.t) + '"' : "") + ">" +
         '<ha-icon class="ic" icon="' + c.icon + '"></ha-icon>' +
-        '<div class="txt"><span class="k">' + this._esc(c.k) + '</span><span class="v">' + this._esc(c.v) + "</span></div>" +
+        '<div class="txt"><span class="k">' + this._esc(c.k) + '</span><span class="v">' + (c.vHtml != null ? c.vHtml : this._esc(c.v)) + "</span></div>" +
       "</div>"
     ).join("") + "</div>";
   }
@@ -508,6 +522,10 @@ class HierarchyPowerCard extends HTMLElement {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
+  }
+
+  _uSpan(unit) {
+    return '<span class="u">' + this._esc(unit) + "</span>";
   }
 
   // Fade a zone's palette colour as it is reused further down the tree, so the
@@ -761,7 +779,11 @@ class HierarchyPowerCard extends HTMLElement {
       .chip .ic { color:var(--chip-color, var(--primary-color)); --mdc-icon-size:20px; flex:0 0 auto; }
       .chip .txt { display:flex; flex-direction:column; }
       .chip .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
-      .chip .v { font-size:0.9rem; font-variant-numeric:tabular-nums; }
+      .chip .v { font-size:0.84rem; font-variant-numeric:tabular-nums; }
+      .chip .u { font-size:0.72em; }
+      .chip .ioSep { opacity:.55; }
+      .chip .io.in { color:#4dabf7; }
+      .chip .io.out { color:#f59f00; }
       .card-content { padding:4px 12px 14px; }
       .row { display:flex; align-items:center; gap:6px; padding:1px 0; }
       .row[data-entity] { cursor:pointer; border-radius:4px; }
@@ -859,6 +881,7 @@ class HierarchyEnergyCard extends HTMLElement {
       group_by_area: false,
       suppress_parent_area: true,
       grid_show_out: true,
+      chip_io_style: "arrows",
       show_percent: false,
       bar_scale: "global",
       show_grid_battery: true,
@@ -866,6 +889,8 @@ class HierarchyEnergyCard extends HTMLElement {
       grid_battery_label: "Grid to Batt",
       show_water: true,
       water_label: "Water",
+      show_gas: true,
+      gas_label: "Gas",
       max_rows: 300,
       label_width: "30%",
       value_width: "68px",
@@ -875,7 +900,8 @@ class HierarchyEnergyCard extends HTMLElement {
       tariff_offpeak_label: "Off-peak",
       tariff_peak_label: "Peak",
       tariff_decimals: 1,
-      tariff_show_percent: true,
+      tariff_display: "both",
+      tariff_peak_first: false,
       hide_unit_label: false,
       date_picker: "auto",
       show_cost: false,
@@ -891,6 +917,11 @@ class HierarchyEnergyCard extends HTMLElement {
       unit: "\u20ac",
       zero_cost_entities: []
     }, config.cost || {});
+    // Back-compat: the old `tariff_show_percent` boolean (only present if the
+    // user set it) maps onto the new `tariff_display` select.
+    if (config.tariff_display === undefined && config.tariff_show_percent !== undefined) {
+      this._config.tariff_display = config.tariff_show_percent === false ? "values" : "both";
+    }
     this._storageKey = "hierarchy-energy-card:" + (config.id || config.title || "default");
     try {
       const stored = localStorage.getItem(this._storageKey);
@@ -929,7 +960,8 @@ class HierarchyEnergyCard extends HTMLElement {
       max_rows: "Maximum rows", group_by_area: "Group by area",
       suppress_parent_area: "Hide parent's own area", show_untracked: "Show untracked row",
       untracked_label: "Untracked label", no_area_label: "No-area label",
-      grid_show_out: "Show grid export", first_level_sort_by: "Level 1 (zones) order",
+      grid_show_out: "Show grid export", chip_io_style: "In/out display",
+      first_level_sort_by: "Level 1 (zones) order",
       area_sort_by: "Area rows order", entity_sort_by: "Entities-in-area order",
       bar_scale: "Bar scale", show_percent: "Percentage column",
       label_width: "Label column width", value_width: "Value column width",
@@ -938,9 +970,11 @@ class HierarchyEnergyCard extends HTMLElement {
       show_grid_battery: "Show grid-to-battery chip", grid_battery_entity: "Grid-to-battery entity",
       grid_battery_label: "Grid-to-battery label",
       show_water: "Show water chip", water_label: "Water label",
+      show_gas: "Show gas chip", gas_label: "Gas label",
       show_tariff: "Show tariff chip", tariff_offpeak_label: "Off-peak label",
       tariff_peak_label: "Peak label", tariff_decimals: "Tariff decimals",
-      tariff_show_percent: "Tariff percentages", date_picker: "Date picker",
+      tariff_display: "Tariff display", tariff_peak_first: "Peak first",
+      date_picker: "Date picker",
       show_cost: "Show cost column", cost_width: "Cost column width",
       cost_decimals: "Cost decimals", cost_show_currency: "Show currency symbol",
       peak_entity: "Peak tariff entity", offpeak_entity: "Off-peak tariff entity",
@@ -951,9 +985,9 @@ class HierarchyEnergyCard extends HTMLElement {
       content: "Card heading and the unit used for the totals and rows.",
       tree: "What the indented breakdown shows, how untracked or parent rows are handled, and how many rows render.",
       ordering: "How zones, area rows and the entities inside each area are ordered.",
-      visual: "Bar length basis, the percentage column, column widths and default expansion.",
+      visual: "Bar length basis, the percentage column, column widths (including the cost column) and default expansion.",
       chips: "The summary chips above the tree. Grid export can be hidden when you only import.",
-      costcolumn: "The optional per-row cost column: whether to show it, its width and number format.",
+      costcolumn: "The optional per-row cost column: whether to show it and its number format.",
       cost: "Tariff entities and prices used to derive the cost column and cost chip.",
       advanced: "Date-range picker behaviour and other rarely changed settings."
     };
@@ -961,11 +995,13 @@ class HierarchyEnergyCard extends HTMLElement {
       label_width: "CSS size, e.g. 30% or 130px.",
       value_width: "CSS size, e.g. 50px.",
       percent_width: "CSS size, e.g. 25px.",
-      cost_width: "CSS size, e.g. 60px.",
+      cost_width: "CSS size, e.g. 60px. Enable Show cost column for this to take effect.",
+      cost_decimals: "Enable Show cost column for this to take effect.",
+      chip_io_style: "Show energy direction as arrows or the words in / out.",
       grid_battery_entity: "Grid-to-battery energy sensor. The chip is hidden when unset.",
       date_picker: "Auto mounts a picker when the dashboard has none.",
       zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
-      cost_show_currency: "Append the currency symbol to each cost value.",
+      cost_show_currency: "Append the currency symbol to each cost value. Enable Show cost column for this to take effect.",
       id: "Stable key for remembering expand/collapse; set it if two cards share a title."
     };
     return {
@@ -1004,6 +1040,7 @@ class HierarchyEnergyCard extends HTMLElement {
             { name: "label_width", selector: { text: {} } },
             { name: "value_width", selector: { text: {} } },
             { name: "percent_width", selector: { text: {} } },
+            { name: "cost_width", selector: { text: {} } },
             { name: "hide_unit_label", selector: { boolean: {} } },
             { name: "expanded_by_default", selector: { boolean: {} } },
             { name: "expand_areas_by_default", selector: { boolean: {} } }
@@ -1014,23 +1051,39 @@ class HierarchyEnergyCard extends HTMLElement {
           schema: [
             { name: "show_summary", selector: { boolean: {} } },
             { name: "grid_show_out", selector: { boolean: {} } },
+            {
+              name: "chip_io_style",
+              selector: { select: { options: [
+                { value: "arrows", label: "Arrows" },
+                { value: "words", label: "in / out" }
+              ] } }
+            },
             { name: "show_grid_battery", selector: { boolean: {} } },
             { name: "grid_battery_entity", selector: { entity: {} } },
             { name: "grid_battery_label", selector: { text: {} } },
             { name: "show_water", selector: { boolean: {} } },
             { name: "water_label", selector: { text: {} } },
+            { name: "show_gas", selector: { boolean: {} } },
+            { name: "gas_label", selector: { text: {} } },
             { name: "show_tariff", selector: { boolean: {} } },
             { name: "tariff_offpeak_label", selector: { text: {} } },
             { name: "tariff_peak_label", selector: { text: {} } },
             { name: "tariff_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
-            { name: "tariff_show_percent", selector: { boolean: {} } }
+            {
+              name: "tariff_display",
+              selector: { select: { options: [
+                { value: "values", label: "Values only" },
+                { value: "percent", label: "Percentage only" },
+                { value: "both", label: "Values and percentage" }
+              ] } }
+            },
+            { name: "tariff_peak_first", selector: { boolean: {} } }
           ]
         },
         {
           type: "expandable", name: "costcolumn", title: "Cost column", flatten: true,
           schema: [
             { name: "show_cost", selector: { boolean: {} } },
-            { name: "cost_width", selector: { text: {} } },
             { name: "cost_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
             { name: "cost_show_currency", selector: { boolean: {} } }
           ]
@@ -1685,7 +1738,7 @@ class HierarchyEnergyCard extends HTMLElement {
     const t = this._totals;
     const get = (id) => (id && typeof t[id] === "number") ? t[id] : 0;
     const srcs = (this._prefs && this._prefs.energy_sources) || [];
-    const s = { total: 0, grid: null, solar: null, battery: null, water: null, cost: null, tariff: null, gridBattery: null };
+    const s = { total: 0, grid: null, solar: null, battery: null, water: null, gas: null, cost: null, tariff: null, gridBattery: null };
     for (const r of this._roots) s.total += get(r.id);
     for (const src of srcs) {
       if (!src) continue;
@@ -1693,6 +1746,7 @@ class HierarchyEnergyCard extends HTMLElement {
       else if (src.type === "solar") s.solar = { prod: get(src.stat_energy_from), entity: src.stat_energy_from || null };
       else if (src.type === "battery") s.battery = { charge: get(src.stat_energy_to), discharge: get(src.stat_energy_from), entity: src.stat_energy_from || null };
       else if (src.type === "water") s.water = { value: get(src.stat_energy_from), unit: this._unitOf(src.stat_energy_from, "m\u00B3") };
+      else if (src.type === "gas") s.gas = { value: get(src.stat_energy_from), unit: this._unitOf(src.stat_energy_from, "m\u00B3") };
     }
     if (!s.water) {
       const dw = (this._prefs && this._prefs.device_consumption_water) || [];
@@ -1722,43 +1776,64 @@ class HierarchyEnergyCard extends HTMLElement {
     if (!this._config.show_summary || !this._byId.size || !this._range) return "";
     const s = this._summary();
     const u = this._config.unit;
-    const us = this._config.hide_unit_label ? "" : (" " + u);
+    const uspan = this._config.hide_unit_label ? "" : " " + this._uSpan(u);
+    const io = (dir) => (this._config.chip_io_style === "words")
+      ? dir
+      : (dir === "in" ? "\u2193" : "\u2191");
+    const num = (x) => this._esc(this._fmt(x));
     const chips = [];
-    chips.push({ k: "Total", v: this._fmt(s.total) + us, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
+    chips.push({ k: "Total", vHtml: num(s.total) + uspan, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
     if (s.grid) {
       const showOut = this._config.grid_show_out !== false && s.grid.out > 0.005;
-      let v = this._fmt(s.grid.in) + us + (showOut ? " in" : "");
-      if (showOut) v += " / " + this._fmt(s.grid.out) + us + " out";
-      chips.push({ k: "Grid", e: s.grid.entity, v: v, icon: "mdi:transmission-tower", color: "#e15759" });
+      let vHtml = num(s.grid.in) + uspan + (showOut ? " " + io("in") : "");
+      if (showOut) vHtml += ' <span class="ioSep">/</span> ' + num(s.grid.out) + uspan + " " + io("out");
+      chips.push({ k: "Grid", e: s.grid.entity, vHtml: vHtml, icon: "mdi:transmission-tower", color: "#e15759" });
     }
-    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, v: this._fmt(s.solar.prod) + us, icon: "mdi:solar-power", color: "#edc948" });
-    if (s.battery) chips.push({ k: "Battery", e: s.battery.entity, v: this._fmt(s.battery.charge) + us + " in / " + this._fmt(s.battery.discharge) + us + " out", icon: "mdi:battery-charging", color: "#59a14f" });
+    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, vHtml: num(s.solar.prod) + uspan, icon: "mdi:solar-power", color: "#edc948" });
+    if (s.battery) chips.push({
+      k: "Battery", e: s.battery.entity,
+      vHtml: '<span class="io in">' + num(s.battery.charge) + uspan + " " + io("in") + "</span>" +
+        ' <span class="ioSep">/</span> ' +
+        '<span class="io out">' + num(s.battery.discharge) + uspan + " " + io("out") + "</span>",
+      icon: "mdi:battery-charging", color: "#59a14f"
+    });
     if (this._config.show_grid_battery !== false && s.gridBattery != null) {
       chips.push({
         k: this._config.grid_battery_label,
-        v: this._fmt(s.gridBattery) + us,
+        vHtml: num(s.gridBattery) + uspan,
         icon: "mdi:battery-plus-variant",
         color: "#2a9d8f",
         e: this._config.grid_battery_entity || null
       });
     }
-    if (typeof s.cost === "number") chips.push({ k: "Cost", v: this._fmtMoney(s.cost) + " " + (this._config.cost.unit || ""), icon: "mdi:currency-eur", color: "#b07aa1" });
+    if (typeof s.cost === "number") chips.push({
+      k: "Cost",
+      vHtml: this._esc(this._fmtMoney(s.cost)) + " " + this._uSpan((this._config.cost && this._config.cost.unit) || "\u20ac"),
+      icon: "mdi:currency-eur", color: "#b07aa1"
+    });
     if (this._config.show_tariff && s.tariff && (s.tariff.total > 0 || s.tariff.off || s.tariff.peak)) {
       let dg = Number(this._config.tariff_decimals);
       if (!isFinite(dg) || dg < 0) dg = 1;
       dg = Math.min(4, Math.round(dg));
-      const showPct = this._config.tariff_show_percent !== false;
+      const mode = this._config.tariff_display
+        || (this._config.tariff_show_percent === false ? "values" : "both");
+      const peakFirst = this._config.tariff_peak_first === true;
       const offLabel = this._config.tariff_offpeak_label || "Off-peak";
       const peakLabel = this._config.tariff_peak_label || "Peak";
-      const offTxt = this._fmtFixed(s.tariff.off, dg);
-      const peakTxt = this._fmtFixed(s.tariff.peak, dg);
+      const offTxt = this._esc(this._fmtFixed(s.tariff.off, dg));
+      const peakTxt = this._esc(this._fmtFixed(s.tariff.peak, dg));
       const offPct = this._fmtPct(s.tariff.offPct);
       const peakPct = this._fmtPct(s.tariff.peakPct);
-      const vHtml = '<span style="color:#59a14f">' + offTxt + (showPct ? " \u00B7 " + offPct : "") + "</span>" +
-        ' <span style="opacity:.55">/</span> ' +
-        '<span style="color:#e15759">' + peakTxt + (showPct ? " \u00B7 " + peakPct : "") + "</span>" + us;
+      const seg = (txt, pct, color) => '<span style="color:' + color + '">' +
+        (mode === "percent" ? pct : (mode === "values" ? txt : txt + " \u00B7 " + pct)) + "</span>";
+      const offSeg = seg(offTxt, offPct, "#59a14f");
+      const peakSeg = seg(peakTxt, peakPct, "#e15759");
+      const tail = mode === "percent" ? "" : uspan;
+      const vHtml = (peakFirst
+        ? peakSeg + ' <span class="ioSep">/</span> ' + offSeg
+        : offSeg + ' <span class="ioSep">/</span> ' + peakSeg) + tail;
       chips.push({
-        k: offLabel + " / " + peakLabel,
+        k: peakFirst ? (peakLabel + " / " + offLabel) : (offLabel + " / " + peakLabel),
         vHtml: vHtml,
         icon: "mdi:clock-outline",
         color: "#8e7cc3",
@@ -1770,10 +1845,19 @@ class HierarchyEnergyCard extends HTMLElement {
     if (this._config.show_water !== false && s.water) {
       chips.push({
         k: this._config.water_label,
-        v: this._fmtNum(s.water.value) + " " + s.water.unit,
+        vHtml: this._esc(this._fmtNum(s.water.value)) + " " + this._uSpan(s.water.unit),
         icon: "mdi:water",
         color: "#00acc1",
         t: "Water usage over the selected Energy period. Click the Energy date selector to change the range."
+      });
+    }
+    if (this._config.show_gas !== false && s.gas) {
+      chips.push({
+        k: this._config.gas_label,
+        vHtml: this._esc(this._fmtNum(s.gas.value)) + " " + this._uSpan(s.gas.unit),
+        icon: "mdi:fire",
+        color: "#e67e22",
+        t: "Gas usage over the selected Energy period. Click the Energy date selector to change the range."
       });
     }
     if (!chips.length) return "";
@@ -1839,6 +1923,10 @@ class HierarchyEnergyCard extends HTMLElement {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
+  }
+
+  _uSpan(unit) {
+    return '<span class="u">' + this._esc(unit) + "</span>";
   }
 
   // Fade a zone's palette colour as it is reused further down the tree, so the
@@ -2035,7 +2123,11 @@ class HierarchyEnergyCard extends HTMLElement {
       .chip .ic { color:var(--chip-color, var(--primary-color)); --mdc-icon-size:20px; flex:0 0 auto; }
       .chip .txt { display:flex; flex-direction:column; }
       .chip .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
-      .chip .v { font-size:0.9rem; font-variant-numeric:tabular-nums; }
+      .chip .v { font-size:0.84rem; font-variant-numeric:tabular-nums; }
+      .chip .u { font-size:0.72em; }
+      .chip .ioSep { opacity:.55; }
+      .chip .io.in { color:#4dabf7; }
+      .chip .io.out { color:#f59f00; }
       .card-content { padding:4px 12px 14px; }
       .row { display:flex; align-items:center; gap:6px; padding:1px 0; }
       .row[data-entity] { cursor:pointer; border-radius:4px; }
