@@ -6,6 +6,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Visual config editor** for both cards, via HA's built-in form editor
+  (`getConfigForm`) plus `getStubConfig`. Options are grouped into Content /
+  Tree / Ordering / Visual / Chips / Cost / Advanced panels. Keys not shown in
+  the form are preserved, so hand-written YAML keeps working.
 - `cost.zero_cost_entities` on the energy card: list entities (solar-served
   loads) that are excluded from the cost allocation and shown as `–` (en dash)
   in the cost column, so they no longer skew the per-kWh rate applied to the

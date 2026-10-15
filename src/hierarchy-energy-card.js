@@ -89,6 +89,167 @@ class HierarchyEnergyCard extends HTMLElement {
     this._render();
   }
 
+  static getStubConfig() {
+    return { title: "Consumption by Zone", unit: "kWh" };
+  }
+
+  // Declarative editor (HA's built-in form editor, no custom element). HA keeps
+  // any config keys not listed here (ha-form merges into the existing data), so
+  // hand-written keys and `grid_options` survive a GUI round-trip.
+  static getConfigForm() {
+    const SORT = [
+      { value: "tree", label: "Config order (Energy dashboard)" },
+      { value: "name", label: "Name (A-Z)" },
+      { value: "kwh", label: "Consumption (largest first)" },
+      { value: "cost", label: "Cost (largest first)" }
+    ];
+    const P = [
+      { value: "parent", label: "Share of parent" },
+      { value: "total", label: "Share of total" },
+      { value: "global", label: "Share of largest" }
+    ];
+    const PCT = [
+      { value: "off", label: "Off" },
+      { value: "all", label: "All rows" },
+      { value: "areas", label: "Areas only" },
+      { value: "devices", label: "Devices only" }
+    ];
+    const labels = {
+      title: "Title", unit: "Unit", show_summary: "Show summary chips",
+      max_rows: "Maximum rows", group_by_area: "Group by area",
+      suppress_parent_area: "Hide parent's own area", show_untracked: "Show untracked row",
+      untracked_label: "Untracked label", no_area_label: "No-area label",
+      grid_show_out: "Show grid export", first_level_sort_by: "Level 1 (zones) order",
+      area_sort_by: "Area rows order", entity_sort_by: "Entities-in-area order",
+      bar_scale: "Bar scale", show_percent: "Percentage column",
+      label_width: "Label column width", value_width: "Value column width",
+      percent_width: "Percent column width", hide_unit_label: "Hide unit suffix",
+      expanded_by_default: "Expand groups on load", expand_areas_by_default: "Expand areas on load",
+      show_grid_battery: "Show grid-to-battery chip", grid_battery_entity: "Grid-to-battery entity",
+      grid_battery_estimate: "Estimate grid-to-battery", grid_battery_label: "Grid-to-battery label",
+      show_water: "Show water chip", water_label: "Water label",
+      show_tariff: "Show tariff chip", tariff_offpeak_label: "Off-peak label",
+      tariff_peak_label: "Peak label", tariff_decimals: "Tariff decimals",
+      tariff_show_percent: "Tariff percentages", date_picker: "Date picker",
+      show_cost: "Show cost column", cost_width: "Cost column width",
+      cost_decimals: "Cost decimals", cost_show_currency: "Show currency symbol",
+      peak_entity: "Peak tariff entity", offpeak_entity: "Off-peak tariff entity",
+      peak_price: "Peak price per unit", offpeak_price: "Off-peak price per unit",
+      zero_cost_entities: "Zero-cost entities (free loads)", id: "Card ID"
+    };
+    const helpers = {
+      bar_scale: "Bar length basis.",
+      show_percent: "Off, all rows, or only area/device rows.",
+      label_width: "CSS size, e.g. 30% or 130px.",
+      value_width: "CSS size, e.g. 50px.",
+      percent_width: "CSS size, e.g. 25px.",
+      first_level_sort_by: "How the top-level zones are ordered.",
+      area_sort_by: "How the area group rows are ordered.",
+      entity_sort_by: "How entities inside each area are ordered.",
+      grid_battery_entity: "Leave empty to estimate from grid import and battery charge.",
+      date_picker: "Auto mounts a picker when the dashboard has none.",
+      zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
+      cost_show_currency: "Append the currency symbol to each cost value.",
+      id: "Stable key for remembering expand/collapse; set it if two cards share a title."
+    };
+    return {
+      schema: [
+        {
+          type: "expandable", name: "content", title: "Content", flatten: true,
+          schema: [
+            { name: "title", selector: { text: {} } },
+            { name: "unit", selector: { select: { options: ["kWh", "Wh", "MWh"] } } },
+            { name: "show_summary", selector: { boolean: {} } },
+            { name: "max_rows", selector: { number: { min: 1, mode: "box" } } }
+          ]
+        },
+        {
+          type: "expandable", name: "tree", title: "Tree", flatten: true,
+          schema: [
+            { name: "group_by_area", selector: { boolean: {} } },
+            { name: "suppress_parent_area", selector: { boolean: {} } },
+            { name: "show_untracked", selector: { boolean: {} } },
+            { name: "untracked_label", selector: { text: {} } },
+            { name: "no_area_label", selector: { text: {} } },
+            { name: "grid_show_out", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "ordering", title: "Ordering", flatten: true,
+          schema: [
+            { name: "first_level_sort_by", selector: { select: { options: SORT } } },
+            { name: "area_sort_by", selector: { select: { options: SORT } } },
+            { name: "entity_sort_by", selector: { select: { options: SORT } } }
+          ]
+        },
+        {
+          type: "expandable", name: "visual", title: "Visual", flatten: true,
+          schema: [
+            { name: "bar_scale", selector: { select: { options: P } } },
+            { name: "show_percent", selector: { select: { options: PCT } } },
+            { name: "label_width", selector: { text: {} } },
+            { name: "value_width", selector: { text: {} } },
+            { name: "percent_width", selector: { text: {} } },
+            { name: "hide_unit_label", selector: { boolean: {} } },
+            { name: "expanded_by_default", selector: { boolean: {} } },
+            { name: "expand_areas_by_default", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "chips", title: "Chips", flatten: true,
+          schema: [
+            { name: "show_grid_battery", selector: { boolean: {} } },
+            { name: "grid_battery_entity", selector: { entity: {} } },
+            { name: "grid_battery_estimate", selector: { boolean: {} } },
+            { name: "grid_battery_label", selector: { text: {} } },
+            { name: "show_water", selector: { boolean: {} } },
+            { name: "water_label", selector: { text: {} } },
+            { name: "show_tariff", selector: { boolean: {} } },
+            { name: "tariff_offpeak_label", selector: { text: {} } },
+            { name: "tariff_peak_label", selector: { text: {} } },
+            { name: "tariff_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
+            { name: "tariff_show_percent", selector: { boolean: {} } },
+            { name: "date_picker", selector: { select: { options: ["auto", "always", "never"] } } }
+          ]
+        },
+        {
+          type: "expandable", name: "costcolumn", title: "Cost column", flatten: true,
+          schema: [
+            { name: "show_cost", selector: { boolean: {} } },
+            { name: "cost_width", selector: { text: {} } },
+            { name: "cost_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
+            { name: "cost_show_currency", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "cost", title: "Cost sources", flatten: false,
+          schema: [
+            { name: "peak_entity", selector: { entity: {} } },
+            { name: "offpeak_entity", selector: { entity: {} } },
+            { name: "peak_price", selector: { number: { min: 0, mode: "box", step: 0.001 } } },
+            { name: "offpeak_price", selector: { number: { min: 0, mode: "box", step: 0.001 } } },
+            { name: "unit", selector: { text: {} } },
+            { name: "zero_cost_entities", selector: { entity: { multiple: true } } }
+          ]
+        },
+        {
+          type: "expandable", name: "advanced", title: "Advanced", flatten: true,
+          schema: [
+            { name: "id", selector: { text: {} } }
+          ]
+        }
+      ],
+      computeLabel: (s) => labels[s.name],
+      computeHelper: (s) => helpers[s.name],
+      assertConfig: (config) => {
+        if (config.cost !== undefined &&
+            (typeof config.cost !== "object" || config.cost === null || Array.isArray(config.cost))) {
+          throw new Error("`cost` must be a mapping.");
+        }
+      }
+    };
+  }
+
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
@@ -524,7 +685,7 @@ class HierarchyEnergyCard extends HTMLElement {
   //   name  — A-Z (locale-aware)
   //   kwh   — value/consumption, largest first
   //   cost  — allocated cost, largest first (energy card; falls back to kwh)
-  //   tree  — the order written in the card's `nodes:` config
+  //   tree  — the order the entries appear in the Energy dashboard
   //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
   //   - `area_sort_by` orders the area *group* rows (level 2).
   //   - `entity_sort_by` orders leaves inside an area (level 3+).
@@ -1100,6 +1261,7 @@ if (!window.customCards.some((c) => c.type === "hierarchy-energy-card")) {
   window.customCards.push({
     type: "hierarchy-energy-card",
     name: "Hierarchy Energy Card",
-    description: "Indented energy breakdown by upstream device, with period summary, synced to the Energy date picker."
+    description: "Indented energy breakdown by upstream device, with period summary, synced to the Energy date picker.",
+    documentationURL: "https://github.com/RenanAz/hierarchy-cards"
   });
 }

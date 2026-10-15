@@ -56,6 +56,116 @@ class HierarchyPowerCard extends HTMLElement {
     this._render();
   }
 
+  static getStubConfig() {
+    return { title: "Live Power", unit: "W" };
+  }
+
+  // Declarative editor (HA's built-in form editor, no custom element). HA keeps
+  // any config keys not listed here (ha-form merges into the existing data), so
+  // hand-written keys and `grid_options` survive a GUI round-trip.
+  static getConfigForm() {
+    const SORT = [
+      { value: "tree", label: "Config order (Energy dashboard)" },
+      { value: "name", label: "Name (A-Z)" },
+      { value: "kwh", label: "Consumption (largest first)" }
+    ];
+    const P = [
+      { value: "parent", label: "Share of parent" },
+      { value: "total", label: "Share of total" },
+      { value: "global", label: "Share of largest" }
+    ];
+    const PCT = [
+      { value: "off", label: "Off" },
+      { value: "all", label: "All rows" },
+      { value: "areas", label: "Areas only" },
+      { value: "devices", label: "Devices only" }
+    ];
+    const labels = {
+      title: "Title", unit: "Unit", show_summary: "Show summary chips",
+      max_rows: "Maximum rows", update_interval: "Update interval (s)",
+      group_by_area: "Group by area", suppress_parent_area: "Hide parent's own area",
+      show_untracked: "Show untracked row", untracked_label: "Untracked label",
+      no_area_label: "No-area label", grid_show_out: "Show grid export",
+      hide_zero: "Hide zero rows", zero_threshold: "Zero threshold",
+      first_level_sort_by: "Level 1 (zones) order", area_sort_by: "Area rows order",
+      entity_sort_by: "Entities-in-area order", bar_scale: "Bar scale",
+      show_percent: "Percentage column", label_width: "Label column width",
+      value_width: "Value column width", percent_width: "Percent column width",
+      hide_unit_label: "Hide unit suffix", expanded_by_default: "Expand groups on load",
+      expand_areas_by_default: "Expand areas on load", id: "Card ID"
+    };
+    const helpers = {
+      bar_scale: "Bar length basis.",
+      show_percent: "Off, all rows, or only area/device rows.",
+      label_width: "CSS size, e.g. 30% or 130px.",
+      value_width: "CSS size, e.g. 50px.",
+      percent_width: "CSS size, e.g. 25px.",
+      update_interval: "Minimum seconds between re-renders, to tame noisy sensors.",
+      hide_zero: "Hide rows at or below the zero threshold.",
+      zero_threshold: "Value at or below which rows are hidden (when enabled above).",
+      first_level_sort_by: "How the top-level zones are ordered.",
+      area_sort_by: "How the area group rows are ordered.",
+      entity_sort_by: "How entities inside each area are ordered.",
+      id: "Stable key for remembering expand/collapse; set it if two cards share a title."
+    };
+    return {
+      schema: [
+        {
+          type: "expandable", name: "content", title: "Content", flatten: true,
+          schema: [
+            { name: "title", selector: { text: {} } },
+            { name: "unit", selector: { select: { options: ["W", "kW", "MW"] } } },
+            { name: "show_summary", selector: { boolean: {} } },
+            { name: "max_rows", selector: { number: { min: 1, mode: "box" } } },
+            { name: "update_interval", selector: { number: { min: 0, mode: "box", step: 0.5 } } }
+          ]
+        },
+        {
+          type: "expandable", name: "tree", title: "Tree", flatten: true,
+          schema: [
+            { name: "group_by_area", selector: { boolean: {} } },
+            { name: "suppress_parent_area", selector: { boolean: {} } },
+            { name: "show_untracked", selector: { boolean: {} } },
+            { name: "untracked_label", selector: { text: {} } },
+            { name: "no_area_label", selector: { text: {} } },
+            { name: "grid_show_out", selector: { boolean: {} } },
+            { name: "hide_zero", selector: { boolean: {} } },
+            { name: "zero_threshold", selector: { number: { min: 0, mode: "box", step: 0.1 } } }
+          ]
+        },
+        {
+          type: "expandable", name: "ordering", title: "Ordering", flatten: true,
+          schema: [
+            { name: "first_level_sort_by", selector: { select: { options: SORT } } },
+            { name: "area_sort_by", selector: { select: { options: SORT } } },
+            { name: "entity_sort_by", selector: { select: { options: SORT } } }
+          ]
+        },
+        {
+          type: "expandable", name: "visual", title: "Visual", flatten: true,
+          schema: [
+            { name: "bar_scale", selector: { select: { options: P } } },
+            { name: "show_percent", selector: { select: { options: PCT } } },
+            { name: "label_width", selector: { text: {} } },
+            { name: "value_width", selector: { text: {} } },
+            { name: "percent_width", selector: { text: {} } },
+            { name: "hide_unit_label", selector: { boolean: {} } },
+            { name: "expanded_by_default", selector: { boolean: {} } },
+            { name: "expand_areas_by_default", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "advanced", title: "Advanced", flatten: true,
+          schema: [
+            { name: "id", selector: { text: {} } }
+          ]
+        }
+      ],
+      computeLabel: (s) => labels[s.name],
+      computeHelper: (s) => helpers[s.name]
+    };
+  }
+
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
@@ -415,7 +525,7 @@ class HierarchyPowerCard extends HTMLElement {
   //   name  — A-Z (locale-aware)
   //   kwh   — value/watts, largest first
   //   cost  — not available on the power card, so it falls back to kwh
-  //   tree  — the order written in the card's `nodes:` config
+  //   tree  — the order the entries appear in the Energy dashboard
   //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
   //   - `area_sort_by` orders the area *group* rows (level 2).
   //   - `entity_sort_by` orders leaves inside an area (level 3+).
@@ -669,6 +779,7 @@ if (!window.customCards.some((c) => c.type === "hierarchy-power-card")) {
   window.customCards.push({
     type: "hierarchy-power-card",
     name: "Hierarchy Power Card",
-    description: "Live indented power breakdown by upstream device, with instant summary chips."
+    description: "Live indented power breakdown by upstream device, with instant summary chips.",
+    documentationURL: "https://github.com/RenanAz/hierarchy-cards"
   });
 }
