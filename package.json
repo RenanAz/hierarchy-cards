@@ -1,6 +1,6 @@
 {
   "name": "hierarchy-cards",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.",
   "private": true,
   "type": "module",
