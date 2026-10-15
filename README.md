@@ -174,6 +174,7 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `percent_width` | string | `34px` | CSS width of the percentage column. |
 | `hide_unit_label` | bool | `false` | Hide the unit suffix next to values. |
 | `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. When off, only the import figure is shown. |
+| `chip_io_style` | string | `arrows` | Show chip energy direction as `arrows` or the words `in` / `out`. |
 
 ### `custom:hierarchy-energy-card`
 
@@ -199,19 +200,24 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `label_width` / `value_width` / `percent_width` | string | `30%` / `68px` / `34px` | Column widths. |
 | `hide_unit_label` | bool | `false` | Hide the unit suffix. |
 | `show_cost` | bool | `false` | Show a per-row cost column (pro-rata share of the period cost the `Cost` chip shows). |
-| `cost_width` | string | `62px` | CSS width of the cost column. |
-| `cost_decimals` | number | `2` | Decimals shown in the cost column. |
-| `cost_show_currency` | bool | `true` | Append the `cost.unit` symbol to each cost value. |
+| `cost_width` | string | `62px` | CSS width of the cost column. Only takes effect when `show_cost` is on. |
+| `cost_decimals` | number | `2` | Decimals shown in the cost column. Only takes effect when `show_cost` is on. |
+| `cost_show_currency` | bool | `true` | Append the `cost.unit` symbol to each cost value. Only takes effect when `show_cost` is on. |
 | `show_tariff` | bool | `false` | Show the off-peak / peak split chip (needs `cost` entities). |
 | `tariff_offpeak_label` | string | `Off-peak` | Off-peak band name, shown on the tariff chip. |
 | `tariff_peak_label` | string | `Peak` | Peak band name, shown on the tariff chip. |
 | `tariff_decimals` | number | `1` | Decimals in the tariff chip. |
-| `tariff_show_percent` | bool | `true` | Show each tariff band's percentage. |
+| `tariff_display` | string | `both` | `values`, `percent`, or `both` — what each tariff band shows. |
+| `tariff_peak_first` | bool | `false` | Show peak before off-peak (flips the chip order). |
 | `show_grid_battery` | bool | `true` | Show the "Grid to Batt" chip. |
 | `grid_battery_entity` | string \| null | `null` | A real grid→battery energy sensor. The chip is hidden when unset. |
 | `grid_battery_label` | string | `Grid to Batt` | Chip label. |
 | `show_water` | bool | `true` | Show the water chip when the Energy dashboard has water. |
 | `water_label` | string | `Water` | Water chip label. |
+| `show_gas` | bool | `true` | Show the gas chip when the Energy dashboard has gas. |
+| `gas_label` | string | `Gas` | Gas chip label. |
+| `grid_show_out` | bool | `true` | Show grid export as well as import in the Grid chip; when off, only import is shown. |
+| `chip_io_style` | string | `arrows` | Show chip energy direction as `arrows` or the words `in` / `out`. |
 | `date_picker` | string | `auto` | `auto` mounts a built-in `energy-date-selection` when none is present; `always`; `never`. |
 | `cost.peak_entity` | string \| null | `null` | Energy sensor for the peak tariff period. |
 | `cost.offpeak_entity` | string \| null | `null` | Energy sensor for the off-peak period. |

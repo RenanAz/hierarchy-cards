@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-15
+
+### Added
+- Gas chip on the energy card (`show_gas`, `gas_label`), mirroring the water
+  chip.
+- `chip_io_style` option (`arrows` | `words`) for the Grid and Battery chips on
+  both cards.
+
+### Changed
+- `cost_width` moved next to the other column widths in the **Visual** panel;
+  the cost display options now note they need **Show cost column** enabled.
+- Tariff chip: the `tariff_show_percent` toggle is replaced by
+  `tariff_display` (`values` | `percent` | `both`), and `tariff_peak_first`
+  flips the chip to peak-before-off-peak. The old boolean is still read for
+  back-compat.
+- Summary chip values render slightly smaller, and their unit suffixes smaller
+  still.
+- Battery charge/discharge text is coloured — charging "in" is blue, draining
+  "out" is amber (no green/red).
+
 ## [1.0.0] - 2026-10-15
 
 ### Added
