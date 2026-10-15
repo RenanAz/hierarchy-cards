@@ -29,7 +29,9 @@ class HierarchyPowerCard extends HTMLElement {
       show_untracked: true,
       expanded_by_default: true,
       expand_areas_by_default: false,
-      sort_siblings: "tree",
+      area_sort_by: "name",
+      entity_sort_by: "kwh",
+      first_level_sort_by: "tree",
       untracked_label: "Untracked",
       no_area_label: "No area",
       group_by_area: false,
@@ -226,9 +228,11 @@ class HierarchyPowerCard extends HTMLElement {
 
   _flatten() {
     const rows = [];
-    const sortValue = this._config.sort_siblings === "value";
     const total = this._roots.reduce((s, r) => s + this._pval(r.rateId), 0);
     this._grandTotal = total;
+    const cmpEntity = this._entityComparator();
+    const cmpRoot = this._rootComparator();
+    const cmpArea = this._areaComparator();
     const push = (row, value, parentValue) => {
       row.pct = (parentValue > 0) ? (value / parentValue) * 100 : (value > 0 ? null : 0);
       rows.push(row);
@@ -237,12 +241,12 @@ class HierarchyPowerCard extends HTMLElement {
       const v = this._pval(node.rateId);
       push({
         kind: "node", id: node.id, name: node.name, depth: depth,
-        value: v, color: color, entity: node.rateId || node.id,
+        value: v, color: this._tint(color, depth), entity: node.rateId || node.id,
         hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id)
       }, v, parentValue);
       if (!node.children.length || !this._isExpanded(node.id)) return;
       let kids = node.children.slice();
-      if (sortValue) kids.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+      if (cmpEntity) kids.sort(cmpEntity);
       if (this._config.group_by_area) {
         const buckets = new Map();
         for (const k of kids) {
@@ -259,18 +263,17 @@ class HierarchyPowerCard extends HTMLElement {
         }
         if (ownBucket) {
           let ok = ownBucket.kids.slice();
-          if (sortValue) ok.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+          if (cmpEntity) ok.sort(cmpEntity);
           ok.forEach((k) => walk(k, depth + 1, color, v));
         }
         const list = Array.from(buckets.values());
-        if (sortValue) list.sort((a, b) => b.sum - a.sum);
-        else list.sort((a, b) => a.name.localeCompare(b.name));
+        if (cmpArea) list.sort(cmpArea);
         for (const b of list) {
           const gid = node.id + "|area|" + b.key;
           const gexp = this._isExpanded(gid);
           push({
             kind: "area", id: gid, name: b.name, depth: depth + 1,
-            value: b.sum, color: color, hasChildren: true, expanded: gexp, icon: b.icon
+            value: b.sum, color: this._tint(color, depth + 1), hasChildren: true, expanded: gexp, icon: b.icon
           }, b.sum, v);
           if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum));
         }
@@ -287,7 +290,7 @@ class HierarchyPowerCard extends HTMLElement {
       }
     };
     let roots = this._roots.slice();
-    if (sortValue) roots.sort((a, b) => this._pval(b.rateId) - this._pval(a.rateId));
+    if (cmpRoot) roots.sort(cmpRoot);
     roots.forEach((r, i) => walk(r, 0, HPC_PALETTE[i % HPC_PALETTE.length], total));
     return rows;
   }
@@ -376,6 +379,21 @@ class HierarchyPowerCard extends HTMLElement {
     ));
   }
 
+  // Fade a zone's palette colour as it is reused further down the tree, so the
+  // hue still identifies the zone branch while depth reads at a glance. Alpha is
+  // blended by the browser against whatever is behind the bar (track/card), so
+  // it works on both light and dark themes.
+  _tint(color, depth) {
+    if (!depth || typeof color !== "string" || color.charAt(0) !== "#") return color;
+    let hex = color.slice(1);
+    if (hex.length === 3) hex = hex.replace(/./g, (c) => c + c);
+    const n = parseInt(hex, 16);
+    if (!isFinite(n)) return color;
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const a = Math.max(0.3, 1 - depth * 0.25);
+    return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")";
+  }
+
   _showPctFor(kind, pctMode) {
     if (pctMode === "off") return false;
     if (pctMode === "all") return true;
@@ -391,6 +409,67 @@ class HierarchyPowerCard extends HTMLElement {
     else if (scale === "total") pct = (this._grandTotal > 0) ? (r.value / this._grandTotal) * 100 : 0;
     else pct = (max > 0) ? (r.value / max) * 100 : 0;
     return Math.max(0, Math.min(100, pct));
+  }
+
+  // Ordering. Three independent user-facing knobs, each one of:
+  //   name  — A-Z (locale-aware)
+  //   kwh   — value/watts, largest first
+  //   cost  — not available on the power card, so it falls back to kwh
+  //   tree  — the order written in the card's `nodes:` config
+  //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
+  //   - `area_sort_by` orders the area *group* rows (level 2).
+  //   - `entity_sort_by` orders leaves inside an area (level 3+).
+  // Each returns a compare function, or null for "tree"/unknown, which callers
+  // treat as "leave as written".
+  _sortMode(value, fallback) {
+    const v = (value == null ? "" : String(value)).toLowerCase();
+    if (v === "name" || v === "kwh" || v === "cost" || v === "tree") return v;
+    return fallback;
+  }
+
+  // Build a node comparator for the given mode over nodes with `name`+`rateId`.
+  _nodeComparator(mode, valueOf) {
+    if (mode === "tree") return null;
+    const inner = (mode === "name")
+      ? (a, b) => a.name.localeCompare(b.name)
+      : (a, b) => (valueOf(b) - valueOf(a)) || a.name.localeCompare(b.name);
+    const zero = (n) => valueOf(n) * this._displayFactor() < 0.005;
+    // Zero rows always sink to the bottom so the active loads stay on top.
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
+  }
+
+  _entityComparator() {
+    // cost is meaningless here (no cost series) -> kwh.
+    const mode = this._sortMode(this._config.entity_sort_by, "kwh");
+    return this._nodeComparator(mode === "cost" ? "kwh" : mode, (n) => this._pval(n.rateId));
+  }
+
+  // Level-1 roots. Kept separate from entity sorting so a user can hand-order
+  // their zones (`tree`) while leaves still sort by consumption.
+  _rootComparator() {
+    const mode = this._sortMode(this._config.first_level_sort_by, "tree");
+    return this._nodeComparator(mode === "cost" ? "kwh" : mode, (n) => this._pval(n.rateId));
+  }
+
+  _areaComparator() {
+    const mode = this._sortMode(this._config.area_sort_by, "name");
+    if (mode === "tree") return null;
+    const zero = (b) => (b.sum || 0) * this._displayFactor() < 0.005;
+    const inner = (mode === "name")
+      ? (a, b) => a.name.localeCompare(b.name)
+      : (a, b) => ((b.sum || 0) - (a.sum || 0)) || a.name.localeCompare(b.name);
+    return (a, b) => (zero(a) !== zero(b)) ? (zero(a) ? 1 : -1) : inner(a, b);
+  }
+
+  // Row indent. The first two levels step by a fixed amount; from the third
+  // level on we also clear the area row's icon (chevron + icon + gap) so a
+  // level-3 name lines up under the text of the level-2 area, not under its
+  // icon.
+  _indentFor(depth) {
+    const step = 10.4;  // 16px * 0.65
+    const base = 7.8;   // 12px * 0.65
+    const iconClear = depth >= 2 ? 6 : 0;
+    return Math.round(base + depth * step + iconClear);
   }
 
   _scheduleRender() {
@@ -424,7 +503,7 @@ class HierarchyPowerCard extends HTMLElement {
 
     const body = rows.map((r) => {
       const w = this._widthFor(r, max);
-      const indent = Math.round((12 + r.depth * 16) * 0.65);
+      const indent = this._indentFor(r.depth);
       const cls = r.kind === "untracked" ? "row untracked"
         : r.kind === "area" ? "row area"
         : "row" + (r.hasChildren ? " parent" : "");
@@ -435,19 +514,19 @@ class HierarchyPowerCard extends HTMLElement {
       const rowIcon = r.kind === "area" ? '<ha-icon class="ric" icon="' + this._esc(r.icon || "mdi:floor-plan") + '"></ha-icon>' : "";
       const nameCls = (r.kind === "untracked" ? "name untracked-name" : "name") + (r.hasChildren ? " clickable" : "");
       const nameAttr = r.hasChildren ? ' data-toggle="' + this._esc(r.id) + '"' : "";
+      // Fade rows that display as zero so active loads stand out.
+      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
       // Always reserve the percentage column while it is in use, so every row's
       // track/bar has the same width. Emitting no cell let the track grow into
       // the percentage column ("bar breaks through"), which showed up for a
       // single-child area whose total is 0 (share undefined -> no cell).
       const pctHtml = (pctMode !== "off")
-        ? '<span class="pct" title="Share of parent">' +
+        ? '<span class="pct' + (valZero ? " zero" : "") + '" title="Share of parent">' +
             (this._showPctFor(r.kind, pctMode) ? (r.pct != null ? this._esc(this._fmtPct(r.pct)) : "\u2013") : "") +
           "</span>"
         : "";
       const rowToggleAttr = (r.kind === "area" && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       const entityAttr = (r.kind === "node" && r.entity) ? ' data-entity="' + this._esc(r.entity) + '"' : "";
-      // Fade rows that display as zero so active loads stand out.
-      const valZero = Math.abs((r.value || 0) * this._displayFactor()) < 0.005;
       return '<div class="' + cls + '"' + rowToggleAttr + entityAttr + '>' +
         '<div class="label" style="padding-left:' + indent + 'px">' + toggle + rowIcon +
           '<span class="' + nameCls + (valZero ? " zero" : "") + '"' + nameAttr + ' title="' + this._esc(r.name) + '">' + this._esc(r.name) + "</span>" +
@@ -573,9 +652,9 @@ class HierarchyPowerCard extends HTMLElement {
       .track { flex:1 1 auto; min-width:20px; height:16px; background:var(--divider-color, rgba(127,127,127,0.2)); border-radius:4px; overflow:hidden; }
       .bar { height:100%; border-radius:4px; transition:width .25s ease; }
       .row.untracked .bar { background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
-      .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
+      .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; }
       .val .u { font-size:0.75em; }
-      .val.zero, .name.zero { color: var(--disabled-text-color, #9e9e9e); }
+      .val.zero, .name.zero, .pct.zero { color: var(--disabled-text-color, #9e9e9e); }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
     `;

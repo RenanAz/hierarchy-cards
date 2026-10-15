@@ -10,8 +10,15 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   loads) that are excluded from the cost allocation and shown as `–` (en dash)
   in the cost column, so they no longer skew the per-kWh rate applied to the
   grid-billed lines.
+- **`first_level_sort_by` / `area_sort_by` / `entity_sort_by`** options
+  (`name` | `kwh` | `cost` | `tree`) replace `sort_siblings`. One per hierarchy
+  level: level-1 roots, area group rows, and entities inside an area; `cost` is
+  energy-only (the power card falls back to `kwh`). Zero rows always sink to the
+  bottom. Defaults: `first_level_sort_by: tree`, `area_sort_by: name`,
+  `entity_sort_by: kwh`.
 - Rows that display as zero fade to the disabled grey (name, value, and cost on
-  the energy card; name and value on the power card).
+  the energy card; name, value and percentage on the power card; the percentage
+  cell also fades on the energy card).
 - Per-row cost column on the energy card (`show_cost`, `cost_width`,
   `cost_decimals`, `cost_show_currency`): each row shows its pro-rata share of
   the period cost the `Cost` chip reports.
@@ -20,6 +27,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   of showing zeros. `ebc6b38`
 
 ### Changed
+- Bars now use a colour ramp by tree depth: a zone's palette hue is reused but
+  faded per level (`alpha = max(0.30, 1 − depth × 0.25)`), so hierarchy reads at
+  a glance while the hue still identifies the zone branch. Alpha blends against
+  the card/track, so it works on light and dark themes.
+- Unit suffixes on both cards (kWh, W and €) render smaller than the value, so
+  the number stays the visual anchor.
 - Cards size to their content: the `.card-content` 660 px scroll cap is gone,
   and `getCardSize()` is computed from the visible row count. `5b38c2b`, `6e7c9a0`
 
