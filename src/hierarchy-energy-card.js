@@ -52,7 +52,6 @@ class HierarchyEnergyCard extends HTMLElement {
       bar_scale: "global",
       show_grid_battery: true,
       grid_battery_entity: null,
-      grid_battery_estimate: true,
       grid_battery_label: "Grid to Batt",
       show_water: true,
       water_label: "Water",
@@ -62,8 +61,8 @@ class HierarchyEnergyCard extends HTMLElement {
       percent_width: "34px",
       show_summary: true,
       show_tariff: false,
-      tariff_offpeak_label: "Vazio",
-      tariff_peak_label: "Fora",
+      tariff_offpeak_label: "Off-peak",
+      tariff_peak_label: "Peak",
       tariff_decimals: 1,
       tariff_show_percent: true,
       hide_unit_label: false,
@@ -87,6 +86,177 @@ class HierarchyEnergyCard extends HTMLElement {
       if (stored) this._expanded = new Set(JSON.parse(stored));
     } catch (e) { this._expanded = null; }
     this._render();
+  }
+
+  static getStubConfig() {
+    return { title: "Consumption by Zone", unit: "kWh" };
+  }
+
+  // Declarative editor (HA's built-in form editor, no custom element). HA keeps
+  // any config keys not listed here (ha-form merges into the existing data), so
+  // hand-written keys and `grid_options` survive a GUI round-trip.
+  static getConfigForm() {
+    const SORT = [
+      { value: "tree", label: "Config order (Energy dashboard)" },
+      { value: "name", label: "Name (A-Z)" },
+      { value: "kwh", label: "Consumption (largest first)" },
+      { value: "cost", label: "Cost (largest first)" }
+    ];
+    const P = [
+      { value: "parent", label: "Share of parent" },
+      { value: "total", label: "Share of total" },
+      { value: "global", label: "Share of largest" }
+    ];
+    const PCT = [
+      { value: "off", label: "Off" },
+      { value: "all", label: "All rows" },
+      { value: "areas", label: "Areas only" },
+      { value: "devices", label: "Devices only" }
+    ];
+    const labels = {
+      title: "Title", unit: "Unit", show_summary: "Show summary chips",
+      max_rows: "Maximum rows", group_by_area: "Group by area",
+      suppress_parent_area: "Hide parent's own area", show_untracked: "Show untracked row",
+      untracked_label: "Untracked label", no_area_label: "No-area label",
+      grid_show_out: "Show grid export", first_level_sort_by: "Level 1 (zones) order",
+      area_sort_by: "Area rows order", entity_sort_by: "Entities-in-area order",
+      bar_scale: "Bar scale", show_percent: "Percentage column",
+      label_width: "Label column width", value_width: "Value column width",
+      percent_width: "Percent column width", hide_unit_label: "Hide unit suffix",
+      expanded_by_default: "Expand groups on load", expand_areas_by_default: "Expand areas on load",
+      show_grid_battery: "Show grid-to-battery chip", grid_battery_entity: "Grid-to-battery entity",
+      grid_battery_label: "Grid-to-battery label",
+      show_water: "Show water chip", water_label: "Water label",
+      show_tariff: "Show tariff chip", tariff_offpeak_label: "Off-peak label",
+      tariff_peak_label: "Peak label", tariff_decimals: "Tariff decimals",
+      tariff_show_percent: "Tariff percentages", date_picker: "Date picker",
+      show_cost: "Show cost column", cost_width: "Cost column width",
+      cost_decimals: "Cost decimals", cost_show_currency: "Show currency symbol",
+      peak_entity: "Peak tariff entity", offpeak_entity: "Off-peak tariff entity",
+      peak_price: "Peak price per unit", offpeak_price: "Off-peak price per unit",
+      zero_cost_entities: "Zero-cost entities (free loads)", id: "Card ID"
+    };
+    const helpers = {
+      content: "Card heading and the unit used for the totals and rows.",
+      tree: "What the indented breakdown shows, how untracked or parent rows are handled, and how many rows render.",
+      ordering: "How zones, area rows and the entities inside each area are ordered.",
+      visual: "Bar length basis, the percentage column, column widths and default expansion.",
+      chips: "The summary chips above the tree. Grid export can be hidden when you only import.",
+      costcolumn: "The optional per-row cost column: whether to show it, its width and number format.",
+      cost: "Tariff entities and prices used to derive the cost column and cost chip.",
+      advanced: "Date-range picker behaviour and other rarely changed settings."
+    };
+    const fieldHelpers = {
+      label_width: "CSS size, e.g. 30% or 130px.",
+      value_width: "CSS size, e.g. 50px.",
+      percent_width: "CSS size, e.g. 25px.",
+      cost_width: "CSS size, e.g. 60px.",
+      grid_battery_entity: "Grid-to-battery energy sensor. The chip is hidden when unset.",
+      date_picker: "Auto mounts a picker when the dashboard has none.",
+      zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
+      cost_show_currency: "Append the currency symbol to each cost value.",
+      id: "Stable key for remembering expand/collapse; set it if two cards share a title."
+    };
+    return {
+      schema: [
+        {
+          type: "expandable", name: "content", title: "Content", flatten: true,
+          schema: [
+            { name: "title", selector: { text: {} } },
+            { name: "unit", selector: { select: { options: ["kWh", "Wh", "MWh"] } } }
+          ]
+        },
+        {
+          type: "expandable", name: "tree", title: "Tree", flatten: true,
+          schema: [
+            { name: "group_by_area", selector: { boolean: {} } },
+            { name: "suppress_parent_area", selector: { boolean: {} } },
+            { name: "show_untracked", selector: { boolean: {} } },
+            { name: "untracked_label", selector: { text: {} } },
+            { name: "no_area_label", selector: { text: {} } },
+            { name: "max_rows", selector: { number: { min: 1, mode: "box" } } }
+          ]
+        },
+        {
+          type: "expandable", name: "ordering", title: "Ordering", flatten: true,
+          schema: [
+            { name: "first_level_sort_by", selector: { select: { options: SORT } } },
+            { name: "area_sort_by", selector: { select: { options: SORT } } },
+            { name: "entity_sort_by", selector: { select: { options: SORT } } }
+          ]
+        },
+        {
+          type: "expandable", name: "visual", title: "Visual", flatten: true,
+          schema: [
+            { name: "bar_scale", selector: { select: { options: P } } },
+            { name: "show_percent", selector: { select: { options: PCT } } },
+            { name: "label_width", selector: { text: {} } },
+            { name: "value_width", selector: { text: {} } },
+            { name: "percent_width", selector: { text: {} } },
+            { name: "hide_unit_label", selector: { boolean: {} } },
+            { name: "expanded_by_default", selector: { boolean: {} } },
+            { name: "expand_areas_by_default", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "chips", title: "Summary chips", flatten: true,
+          schema: [
+            { name: "show_summary", selector: { boolean: {} } },
+            { name: "grid_show_out", selector: { boolean: {} } },
+            { name: "show_grid_battery", selector: { boolean: {} } },
+            { name: "grid_battery_entity", selector: { entity: {} } },
+            { name: "grid_battery_label", selector: { text: {} } },
+            { name: "show_water", selector: { boolean: {} } },
+            { name: "water_label", selector: { text: {} } },
+            { name: "show_tariff", selector: { boolean: {} } },
+            { name: "tariff_offpeak_label", selector: { text: {} } },
+            { name: "tariff_peak_label", selector: { text: {} } },
+            { name: "tariff_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
+            { name: "tariff_show_percent", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "costcolumn", title: "Cost column", flatten: true,
+          schema: [
+            { name: "show_cost", selector: { boolean: {} } },
+            { name: "cost_width", selector: { text: {} } },
+            { name: "cost_decimals", selector: { number: { min: 0, max: 4, mode: "box" } } },
+            { name: "cost_show_currency", selector: { boolean: {} } }
+          ]
+        },
+        {
+          type: "expandable", name: "cost", title: "Cost sources", flatten: false,
+          schema: [
+            { name: "peak_entity", selector: { entity: {} } },
+            { name: "offpeak_entity", selector: { entity: {} } },
+            { name: "peak_price", selector: { number: { min: 0, mode: "box", step: 0.001 } } },
+            { name: "offpeak_price", selector: { number: { min: 0, mode: "box", step: 0.001 } } },
+            { name: "unit", selector: { text: {} } },
+            { name: "zero_cost_entities", selector: { entity: { multiple: true } } }
+          ]
+        },
+        {
+          type: "expandable", name: "advanced", title: "Advanced", flatten: true,
+          schema: [
+            { name: "id", selector: { text: {} } },
+            { name: "date_picker", selector: { select: { options: ["auto", "always", "never"] } } }
+          ]
+        }
+      ],
+      computeLabel: (s, data, options) => {
+        if (s.name === "unit" && options && options.path && options.path.includes("cost")) {
+          return "Currency symbol";
+        }
+        return labels[s.name];
+      },
+      computeHelper: (s) => helpers[s.name] ?? fieldHelpers[s.name],
+      assertConfig: (config) => {
+        if (config.cost !== undefined &&
+            (typeof config.cost !== "object" || config.cost === null || Array.isArray(config.cost))) {
+          throw new Error("`cost` must be a mapping.");
+        }
+      }
+    };
   }
 
   set hass(hass) {
@@ -457,11 +627,14 @@ class HierarchyEnergyCard extends HTMLElement {
   _areaExpandableIds() {
     const ids = [];
     if (!this._config.group_by_area) return ids;
+    const rootIds = new Set(this._roots.map((r) => r.id));
     for (const node of this._byId.values()) {
       if (!node.children.length) continue;
       const keys = new Set();
       for (const c of node.children) keys.add(this._areaOf(c.id).key);
-      if (this._config.suppress_parent_area !== false) keys.delete(this._areaOf(node.id).key);
+      if (this._config.suppress_parent_area !== false && !rootIds.has(node.id)) {
+        keys.delete(this._areaOf(node.id).key);
+      }
       for (const k of keys) ids.push(node.id + "|area|" + k);
     }
     return ids;
@@ -524,7 +697,7 @@ class HierarchyEnergyCard extends HTMLElement {
   //   name  — A-Z (locale-aware)
   //   kwh   — value/consumption, largest first
   //   cost  — allocated cost, largest first (energy card; falls back to kwh)
-  //   tree  — the order written in the card's `nodes:` config
+  //   tree  — the order the entries appear in the Energy dashboard
   //   - `first_level_sort_by` orders the level-1 roots (the zones/top devices).
   //   - `area_sort_by` orders the area *group* rows (level 2).
   //   - `entity_sort_by` orders leaves inside an area (level 3+).
@@ -632,7 +805,7 @@ class HierarchyEnergyCard extends HTMLElement {
       row.cost = hasCost ? ((costValue || 0) * this._costUnit) : null;
       rows.push(row);
     };
-    const walk = (node, depth, color, parentValue) => {
+    const walk = (node, depth, color, parentValue, enclosingKey) => {
       const v = this._totals[node.id] || 0;
       push({
         kind: "node", id: node.id, name: node.name, depth: depth,
@@ -655,15 +828,17 @@ class HierarchyEnergyCard extends HTMLElement {
           b.weight = b.kids.reduce((s, k) => s + (weight.get(k.id) || 0), 0);
         }
         let ownBucket = null;
-        if (this._config.suppress_parent_area !== false) {
+        if (this._config.suppress_parent_area !== false && enclosingKey !== null) {
           const ownKey = this._areaOf(node.id).key;
-          ownBucket = buckets.get(ownKey) || null;
-          if (ownBucket) buckets.delete(ownKey);
+          if (ownKey === enclosingKey) {
+            ownBucket = buckets.get(ownKey) || null;
+            if (ownBucket) buckets.delete(ownKey);
+          }
         }
         if (ownBucket) {
           let ok = ownBucket.kids.slice();
           if (cmpEntity) ok.sort(cmpEntity);
-          ok.forEach((k) => walk(k, depth + 1, color, v));
+          ok.forEach((k) => walk(k, depth + 1, color, v, enclosingKey));
         }
         const list = Array.from(buckets.values());
         for (const b of list) b.cost = b.weight * this._costUnit;
@@ -675,10 +850,10 @@ class HierarchyEnergyCard extends HTMLElement {
             kind: "area", id: gid, name: b.name, depth: depth + 1,
             value: b.sum, color: this._tint(color, depth + 1), hasChildren: true, expanded: gexp, icon: b.icon
           }, b.sum, v, b.weight);
-          if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum));
+          if (gexp) b.kids.forEach((k) => walk(k, depth + 2, color, b.sum, b.key));
         }
       } else {
-        kids.forEach((k) => walk(k, depth + 1, color, v));
+        kids.forEach((k) => walk(k, depth + 1, color, v, null));
       }
       if (this._config.show_untracked) {
         const u = this._untracked(node);
@@ -691,7 +866,7 @@ class HierarchyEnergyCard extends HTMLElement {
     };
     let roots = this._roots.slice();
     if (cmpRoot) roots.sort(cmpRoot);
-    roots.forEach((r, i) => walk(r, 0, HEC_PALETTE[i % HEC_PALETTE.length], total));
+    roots.forEach((r, i) => walk(r, 0, HEC_PALETTE[i % HEC_PALETTE.length], total, null));
     return rows;
   }
 
@@ -699,7 +874,7 @@ class HierarchyEnergyCard extends HTMLElement {
     const t = this._totals;
     const get = (id) => (id && typeof t[id] === "number") ? t[id] : 0;
     const srcs = (this._prefs && this._prefs.energy_sources) || [];
-    const s = { total: 0, grid: null, solar: null, battery: null, water: null, cost: null, tariff: null, gridBattery: null, gridBatteryEst: false };
+    const s = { total: 0, grid: null, solar: null, battery: null, water: null, cost: null, tariff: null, gridBattery: null };
     for (const r of this._roots) s.total += get(r.id);
     for (const src of srcs) {
       if (!src) continue;
@@ -728,12 +903,7 @@ class HierarchyEnergyCard extends HTMLElement {
       s.tariff = { off: off, peak: peak, total: tot, offPct: tot > 0 ? (off / tot) * 100 : 0, peakPct: tot > 0 ? (peak / tot) * 100 : 0 };
     }
     const gbe = this._config.grid_battery_entity;
-    if (gbe) {
-      s.gridBattery = get(gbe);
-    } else if (this._config.grid_battery_estimate !== false && s.grid && s.battery) {
-      s.gridBattery = Math.min(s.battery.charge, s.grid.in);
-      s.gridBatteryEst = true;
-    }
+    if (gbe) s.gridBattery = get(gbe);
     return s;
   }
 
@@ -745,24 +915,20 @@ class HierarchyEnergyCard extends HTMLElement {
     const chips = [];
     chips.push({ k: "Total", v: this._fmt(s.total) + us, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
     if (s.grid) {
-      let v = this._fmt(s.grid.in) + us + " in";
-      const showOut = this._config.grid_show_out !== false;
-      if (showOut && s.grid.out > 0.005) v += " / " + this._fmt(s.grid.out) + us + " out";
+      const showOut = this._config.grid_show_out !== false && s.grid.out > 0.005;
+      let v = this._fmt(s.grid.in) + us + (showOut ? " in" : "");
+      if (showOut) v += " / " + this._fmt(s.grid.out) + us + " out";
       chips.push({ k: "Grid", e: s.grid.entity, v: v, icon: "mdi:transmission-tower", color: "#e15759" });
     }
     if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, v: this._fmt(s.solar.prod) + us, icon: "mdi:solar-power", color: "#edc948" });
     if (s.battery) chips.push({ k: "Battery", e: s.battery.entity, v: this._fmt(s.battery.charge) + us + " in / " + this._fmt(s.battery.discharge) + us + " out", icon: "mdi:battery-charging", color: "#59a14f" });
     if (this._config.show_grid_battery !== false && s.gridBattery != null) {
-      const est = s.gridBatteryEst ? " (est.)" : "";
       chips.push({
-        k: this._config.grid_battery_label + est,
+        k: this._config.grid_battery_label,
         v: this._fmt(s.gridBattery) + us,
         icon: "mdi:battery-plus-variant",
         color: "#2a9d8f",
-        e: this._config.grid_battery_entity || null,
-        t: s.gridBatteryEst
-          ? "Estimated as min(battery charge, grid import). Set grid_battery_entity to a real grid-to-battery energy sensor for an exact value."
-          : null
+        e: this._config.grid_battery_entity || null
       });
     }
     if (typeof s.cost === "number") chips.push({ k: "Cost", v: this._fmtMoney(s.cost) + " " + (this._config.cost.unit || ""), icon: "mdi:currency-eur", color: "#b07aa1" });
@@ -771,8 +937,8 @@ class HierarchyEnergyCard extends HTMLElement {
       if (!isFinite(dg) || dg < 0) dg = 1;
       dg = Math.min(4, Math.round(dg));
       const showPct = this._config.tariff_show_percent !== false;
-      const offLabel = this._config.tariff_offpeak_label || "Vazio";
-      const peakLabel = this._config.tariff_peak_label || "Fora";
+      const offLabel = this._config.tariff_offpeak_label || "Off-peak";
+      const peakLabel = this._config.tariff_peak_label || "Peak";
       const offTxt = this._fmtFixed(s.tariff.off, dg);
       const peakTxt = this._fmtFixed(s.tariff.peak, dg);
       const offPct = this._fmtPct(s.tariff.offPct);
@@ -781,7 +947,7 @@ class HierarchyEnergyCard extends HTMLElement {
         ' <span style="opacity:.55">/</span> ' +
         '<span style="color:#e15759">' + peakTxt + (showPct ? " \u00B7 " + peakPct : "") + "</span>" + us;
       chips.push({
-        k: "Tariff - Off Peak / Peak",
+        k: offLabel + " / " + peakLabel,
         vHtml: vHtml,
         icon: "mdi:clock-outline",
         color: "#8e7cc3",
@@ -1100,6 +1266,7 @@ if (!window.customCards.some((c) => c.type === "hierarchy-energy-card")) {
   window.customCards.push({
     type: "hierarchy-energy-card",
     name: "Hierarchy Energy Card",
-    description: "Indented energy breakdown by upstream device, with period summary, synced to the Energy date picker."
+    description: "Indented energy breakdown by upstream device, with period summary, synced to the Energy date picker.",
+    documentationURL: "https://github.com/RenanAz/hierarchy-cards"
   });
 }

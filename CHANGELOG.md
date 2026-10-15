@@ -3,9 +3,15 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-10-15
 
 ### Added
+- **Visual config editor** for both cards, via HA's built-in form editor
+  (`getConfigForm`) plus `getStubConfig`. Options are grouped into Content /
+  Tree / Ordering / Visual / Summary chips / Cost column / Cost sources /
+  Advanced panels (power: Content / Tree / Ordering / Visual / Summary /
+  Advanced). Keys not shown in the form are preserved, so hand-written YAML
+  keeps working.
 - `cost.zero_cost_entities` on the energy card: list entities (solar-served
   loads) that are excluded from the cost allocation and shown as `–` (en dash)
   in the cost column, so they no longer skew the per-kWh rate applied to the
@@ -26,7 +32,23 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   built-in `energy-date-selection` itself when the dashboard has none, instead
   of showing zeros. `ebc6b38`
 
+### Removed
+- `grid_battery_estimate` (energy): the `min(battery charge, grid import)`
+  heuristic did not represent real grid→battery flow (it ignored solar charging
+  and load draw). The "Grid to Batt" chip now requires an explicit
+  `grid_battery_entity` and is hidden when unset.
+
 ### Changed
+- Config-editor hints moved from below each field to a short description under
+  each panel title, above the options.
+- Editor options regrouped by what they affect: `show_summary` and
+  `grid_show_out` moved into **Summary chips**, `max_rows` into **Tree**,
+  `date_picker` into **Advanced**, and the cost display fields
+  (`show_cost`, `cost_width`, `cost_decimals`, `cost_show_currency`) into a
+  **Cost column** panel. `cost.unit` is now labelled **Currency symbol** to
+  distinguish it from the display `unit`.
+- Tariff band labels default to English `Off-peak` / `Peak` instead of the
+  Portugal-specific `Vazio` / `Fora`; both remain renameable per card.
 - Bars now use a colour ramp by tree depth: a zone's palette hue is reused but
   faded per level (`alpha = max(0.30, 1 − depth × 0.25)`), so hierarchy reads at
   a glance while the hue still identifies the zone branch. Alpha blends against
@@ -37,6 +59,16 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   and `getCardSize()` is computed from the visible row count. `5b38c2b`, `6e7c9a0`
 
 ### Fixed
+- `suppress_parent_area` ("Hide parent's own area") no longer suppresses the
+  top-level area group. It now only hides an area bucket when the parent row is
+  already inside an area group of that same area, so the first level of area
+  grouping stays visible and only the nested duplicate is removed (energy and
+  power).
+- Tariff off-peak / peak labels (`tariff_offpeak_label`, `tariff_peak_label`) are
+  now shown on the visible tariff chip; previously they only appeared in the
+  hover tooltip, so editing them had no visible effect.
+- Grid chip no longer appends the redundant `in` qualifier when grid export is
+  hidden (energy) or off (power); it then shows just the import figure.
 - Percentage column width is now reserved on every row, so a row whose share is
   undefined (e.g. the only child of a zero-total area) no longer lets its bar
   grow into the percentage column. Such rows show `0%` when the value is zero.

@@ -139,6 +139,12 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 
 ## Configuration
 
+Both cards have a **visual editor** in the dashboard (add/edit the card), with
+options grouped into Content / Tree / Ordering / Visual / Summary chips /
+Cost column / Cost sources / Advanced panels (the power card has no cost panels,
+and its summary lives in a Summary panel). The tables below list the same options
+for hand-written YAML; any key you add in YAML is preserved by the visual editor.
+
 ### `custom:hierarchy-power-card`
 
 | Option | Type | Default | Description |
@@ -148,7 +154,7 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `id` | string | title | Stable key used to remember expanded/collapsed rows in `localStorage`. Set it if you use two power cards with the same title. |
 | `show_summary` | bool | `true` | Show the summary chips (Total / Grid / Solar / Battery / SOC). |
 | `group_by_area` | bool | `false` | Group a device's children into collapsible area buckets. |
-| `suppress_parent_area` | bool | `true` | When grouping by area, don't create a bucket for the parent's own area (avoids echoing the parent). |
+| `suppress_parent_area` | bool | `true` | When grouping by area, don't nest an area bucket inside the same area again (keeps the top-level area group; avoids echoing the parent). |
 | `show_untracked` | bool | `true` | Show the "parent minus children" remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
@@ -167,7 +173,7 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `value_width` | string | `68px` | CSS width of the value column. |
 | `percent_width` | string | `34px` | CSS width of the percentage column. |
 | `hide_unit_label` | bool | `false` | Hide the unit suffix next to values. |
-| `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. |
+| `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. When off, only the import figure is shown. |
 
 ### `custom:hierarchy-energy-card`
 
@@ -178,7 +184,7 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `id` | string | title | Stable key for remembering expanded/collapsed rows. |
 | `show_summary` | bool | `true` | Show summary chips. |
 | `group_by_area` | bool | `false` | Group children into collapsible area buckets. |
-| `suppress_parent_area` | bool | `true` | Don't create a bucket for the parent's own area. |
+| `suppress_parent_area` | bool | `true` | Don't nest an area bucket inside the same area again (keeps the top-level group). |
 | `show_untracked` | bool | `true` | Show the remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
@@ -197,13 +203,12 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 | `cost_decimals` | number | `2` | Decimals shown in the cost column. |
 | `cost_show_currency` | bool | `true` | Append the `cost.unit` symbol to each cost value. |
 | `show_tariff` | bool | `false` | Show the off-peak / peak split chip (needs `cost` entities). |
-| `tariff_offpeak_label` | string | `Vazio` | Off-peak label. |
-| `tariff_peak_label` | string | `Fora` | Peak label. |
+| `tariff_offpeak_label` | string | `Off-peak` | Off-peak band name, shown on the tariff chip. |
+| `tariff_peak_label` | string | `Peak` | Peak band name, shown on the tariff chip. |
 | `tariff_decimals` | number | `1` | Decimals in the tariff chip. |
 | `tariff_show_percent` | bool | `true` | Show each tariff band's percentage. |
 | `show_grid_battery` | bool | `true` | Show the "Grid to Batt" chip. |
-| `grid_battery_entity` | string \| null | `null` | A real grid→battery energy sensor. If unset and `grid_battery_estimate` is on, it is estimated as `min(battery charge, grid import)`. |
-| `grid_battery_estimate` | bool | `true` | Allow the estimate when no entity is set. |
+| `grid_battery_entity` | string \| null | `null` | A real grid→battery energy sensor. The chip is hidden when unset. |
 | `grid_battery_label` | string | `Grid to Batt` | Chip label. |
 | `show_water` | bool | `true` | Show the water chip when the Energy dashboard has water. |
 | `water_label` | string | `Water` | Water chip label. |
@@ -245,7 +250,7 @@ Three options control row order, one per hierarchy level, because they answer
 different questions:
 
 - **`first_level_sort_by`** — the **level-1 rows**: the top-level zones/devices
-  in your built-in `nodes:` config.
+  (the entries from your Energy dashboard).
 - **`area_sort_by`** — the **area group rows** (level 2), the ones introduced by
   `group_by_area`.
 - **`entity_sort_by`** — the **leaves inside an area** (level 3 and deeper).
@@ -257,7 +262,7 @@ Each accepts:
 | `name` | A–Z, case-insensitive (locale-aware). |
 | `kwh` | Consumption, largest first. On the power card this is the live value (W). |
 | `cost` | Allocated cost, largest first. **Energy card only** — the power card has no cost column, so it falls back to `kwh`. |
-| `tree` | The order you wrote in the card's built-in `nodes:` config. Useful to hand-curate a fixed order. |
+| `tree` | The order the entries appear in your Energy dashboard. Keep it to preserve the dashboard's own order. |
 
 Defaults:
 
@@ -325,16 +330,14 @@ These are the reasons this is pre-release rather than release-ready:
 3. **Admin-only.** `energy/get_prefs` fails for non-admin users; the card shows
    an error message instead of degrading.
 4. **Polling.** The Energy card polls the collection every 500 ms while mounted.
-5. **No GUI editor.** There is no `getConfigElement` / `getConfigForm`, and no
-   `getStubConfig`, so the card picker/YAML editor can't help configure it.
-6. **Partial localisation.** Several strings are hard-coded English
-   ("Total", "Untracked", "Collapse all", …) and the `Vazio`/`Fora` tariff
-   labels are Portugal-specific defaults.
-7. **`hide_zero` / `zero_threshold` are inert on the Energy card.** They are
+5. **Partial localisation.** Several strings are hard-coded English
+   ("Total", "Untracked", "Collapse all", …); the tariff band labels default to
+   `Off-peak` / `Peak` and can be renamed per card.
+6. **`hide_zero` / `zero_threshold` are inert on the Energy card.** They are
    referenced in `getCardSize()` but not applied by the render path.
-8. **Flat tree without hierarchy.** The tree only nests if you set
+7. **Flat tree without hierarchy.** The tree only nests if you set
    "Included in" on your Energy devices; otherwise all devices are roots.
-9. **No tests / no bundler.** The build is a plain concatenation and there is
+8. **No tests / no bundler.** The build is a plain concatenation and there is
    no automated test suite.
 
 ## Roadmap
@@ -349,7 +352,9 @@ These are the reasons this is pre-release rather than release-ready:
 - [ ] Add explicit `total`/`grid`/`solar`/`battery`/`soc` source overrides and a
       manual `devices:` list, for users who don't use the Energy dashboard.
 - [ ] Extract shared code into `src/shared.js` and switch the build to esbuild.
-- [ ] Add a visual config editor + `getStubConfig()`.
+- [x] Add a visual config editor + `getStubConfig()`. (HA built-in form editor
+      via `getConfigForm()`, grouped into Content / Tree / Ordering / Visual /
+      Summary chips / Cost column / Cost sources / Advanced panels.)
 - [ ] Replace the internal-collection scan with a supported data path (or a
       clearly documented fallback).
 - [ ] Handle non-admin users gracefully.
@@ -368,7 +373,7 @@ These are the reasons this is pre-release rather than release-ready:
 - [ ] Set the GitHub repo **description** and **topics** (`home-assistant`,
       `lovelace`, `hacs`, `custom-card`, `energy`). The `Validate` workflow's
       `description` and `topics` checks fail until this is done.
-- [ ] Tag and publish a release (`v0.1.0`); HACS reads *releases*, not just tags.
+- [x] Tag and publish a release (`v1.0.0`); HACS reads *releases*, not just tags.
 - [ ] Decide whether to do the roadmap refactors before requesting inclusion in
       the default HACS store.
 
