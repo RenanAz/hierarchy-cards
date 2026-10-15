@@ -37,6 +37,7 @@ class HierarchyPowerCard extends HTMLElement {
       group_by_area: false,
       suppress_parent_area: true,
       grid_show_out: true,
+      chip_io_style: "arrows",
       show_percent: false,
       bar_scale: "parent",
       show_summary: true,
@@ -86,6 +87,7 @@ class HierarchyPowerCard extends HTMLElement {
       group_by_area: "Group by area", suppress_parent_area: "Hide parent's own area",
       show_untracked: "Show untracked row", untracked_label: "Untracked label",
       no_area_label: "No-area label", grid_show_out: "Show grid export",
+      chip_io_style: "In/out display",
       hide_zero: "Hide zero rows", zero_threshold: "Zero threshold",
       first_level_sort_by: "Level 1 (zones) order", area_sort_by: "Area rows order",
       entity_sort_by: "Entities-in-area order", bar_scale: "Bar scale",
@@ -106,6 +108,7 @@ class HierarchyPowerCard extends HTMLElement {
       label_width: "CSS size, e.g. 30% or 130px.",
       value_width: "CSS size, e.g. 50px.",
       percent_width: "CSS size, e.g. 25px.",
+      chip_io_style: "Show energy direction as arrows or the words in / out.",
       update_interval: "Minimum seconds between re-renders, to tame noisy sensors.",
       zero_threshold: "Value at or below which rows are hidden (when enabled above).",
       id: "Stable key for remembering expand/collapse; set it if two cards share a title."
@@ -157,7 +160,14 @@ class HierarchyPowerCard extends HTMLElement {
           type: "expandable", name: "summary", title: "Summary", flatten: true,
           schema: [
             { name: "show_summary", selector: { boolean: {} } },
-            { name: "grid_show_out", selector: { boolean: {} } }
+            { name: "grid_show_out", selector: { boolean: {} } },
+            {
+              name: "chip_io_style",
+              selector: { select: { options: [
+                { value: "arrows", label: "Arrows" },
+                { value: "words", label: "in / out" }
+              ] } }
+            }
           ]
         },
         {
@@ -442,37 +452,41 @@ class HierarchyPowerCard extends HTMLElement {
     if (!this._config.show_summary || !this._byId.size) return "";
     const s = this._summary();
     const u = this._config.unit;
-    const us = this._config.hide_unit_label ? "" : (" " + u);
+    const uspan = this._config.hide_unit_label ? "" : " " + this._uSpan(u);
+    const io = (dir) => (this._config.chip_io_style === "words")
+      ? dir
+      : (dir === "in" ? "\u2193" : "\u2191");
+    const num = (x) => this._esc(this._fmt(x));
     const chips = [];
-    chips.push({ k: "Total", v: this._fmt(s.total) + us, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
+    chips.push({ k: "Total", vHtml: num(s.total) + uspan, icon: "mdi:home-lightning-bolt", color: "var(--primary-color)" });
     if (s.grid) {
       const g = s.grid.net;
       const showOut = this._config.grid_show_out !== false;
-      let v;
-      if (g < 0) v = this._fmt(-g) + us + (showOut ? " in" : "");
-      else if (!showOut) v = "0" + us;
-      else v = this._fmt(g) + us + " out";
-      chips.push({ k: "Grid", e: s.grid.entity, v: v, icon: g < 0 ? "mdi:transmission-tower-import" : "mdi:transmission-tower-export", color: "#e15759" });
+      let vHtml;
+      if (g < 0) vHtml = num(-g) + uspan + (showOut ? " " + io("in") : "");
+      else if (!showOut) vHtml = this._esc("0") + uspan;
+      else vHtml = num(g) + uspan + " " + io("out");
+      chips.push({ k: "Grid", e: s.grid.entity, vHtml: vHtml, icon: g < 0 ? "mdi:transmission-tower-import" : "mdi:transmission-tower-export", color: "#e15759" });
     }
-    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, v: this._fmt(s.solar.prod) + us, icon: "mdi:solar-power", color: "#edc948" });
+    if (s.solar) chips.push({ k: "Solar", e: s.solar.entity, vHtml: num(s.solar.prod) + uspan, icon: "mdi:solar-power", color: "#edc948" });
     if (s.battery) {
       const net = s.battery.charge - s.battery.discharge;
-      const v = net >= 0
-        ? this._fmt(s.battery.charge) + us + " in"
-        : this._fmt(s.battery.discharge) + us + " out";
-      chips.push({ k: "Battery", e: s.battery.entity, v: v, icon: "mdi:battery-charging", color: "#59a14f" });
+      const vHtml = net >= 0
+        ? '<span class="io in">' + num(s.battery.charge) + uspan + " " + io("in") + "</span>"
+        : '<span class="io out">' + num(s.battery.discharge) + uspan + " " + io("out") + "</span>";
+      chips.push({ k: "Battery", e: s.battery.entity, vHtml: vHtml, icon: "mdi:battery-charging", color: "#59a14f" });
     }
     if (s.soc != null) {
       const soc = Math.round(s.soc);
       const lvl = Math.max(0, Math.min(100, Math.round(soc / 10) * 10));
       const socIcon = lvl === 0 ? "mdi:battery-outline" : lvl === 100 ? "mdi:battery" : "mdi:battery-" + lvl;
-      chips.push({ k: "SOC", e: s.socEntity, v: soc + " %", icon: socIcon, color: "#59a14f" });
+      chips.push({ k: "SOC", e: s.socEntity, vHtml: this._esc(String(soc)) + " " + this._uSpan("%"), icon: socIcon, color: "#59a14f" });
     }
     if (!chips.length) return "";
     return '<div class="summary">' + chips.map((c) =>
       '<div class="chip" style="--chip-color:' + c.color + '"' + (c.e ? ' data-entity="' + this._esc(c.e) + '"' : "") + (c.t ? ' title="' + this._esc(c.t) + '"' : "") + ">" +
         '<ha-icon class="ic" icon="' + c.icon + '"></ha-icon>' +
-        '<div class="txt"><span class="k">' + this._esc(c.k) + '</span><span class="v">' + this._esc(c.v) + "</span></div>" +
+        '<div class="txt"><span class="k">' + this._esc(c.k) + '</span><span class="v">' + (c.vHtml != null ? c.vHtml : this._esc(c.v)) + "</span></div>" +
       "</div>"
     ).join("") + "</div>";
   }
@@ -500,6 +514,10 @@ class HierarchyPowerCard extends HTMLElement {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
     ));
+  }
+
+  _uSpan(unit) {
+    return '<span class="u">' + this._esc(unit) + "</span>";
   }
 
   // Fade a zone's palette colour as it is reused further down the tree, so the
@@ -753,7 +771,11 @@ class HierarchyPowerCard extends HTMLElement {
       .chip .ic { color:var(--chip-color, var(--primary-color)); --mdc-icon-size:20px; flex:0 0 auto; }
       .chip .txt { display:flex; flex-direction:column; }
       .chip .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
-      .chip .v { font-size:0.9rem; font-variant-numeric:tabular-nums; }
+      .chip .v { font-size:0.84rem; font-variant-numeric:tabular-nums; }
+      .chip .u { font-size:0.72em; }
+      .chip .ioSep { opacity:.55; }
+      .chip .io.in { color:#4dabf7; }
+      .chip .io.out { color:#f59f00; }
       .card-content { padding:4px 12px 14px; }
       .row { display:flex; align-items:center; gap:6px; padding:1px 0; }
       .row[data-entity] { cursor:pointer; border-radius:4px; }
