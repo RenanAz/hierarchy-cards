@@ -826,6 +826,17 @@ class HierarchyEnergyCard extends HTMLElement {
     return Math.max(0, Math.min(100, pct));
   }
 
+  // Row indent. The first two levels step by a fixed amount; from the third
+  // level on we also clear the area row's icon (chevron + icon + gap) so a
+  // level-3 name lines up under the text of the level-2 area, not under its
+  // icon.
+  _indentFor(depth) {
+    const step = 10.4;  // 16px * 0.65
+    const base = 7.8;   // 12px * 0.65
+    const iconClear = depth >= 2 ? 6 : 0;
+    return Math.round(base + depth * step + iconClear);
+  }
+
   _render() {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     const root = this.shadowRoot;
@@ -838,7 +849,7 @@ class HierarchyEnergyCard extends HTMLElement {
 
     const body = rows.map((r) => {
       const w = this._widthFor(r, max);
-      const indent = Math.round((12 + r.depth * 16) * 0.65);
+      const indent = this._indentFor(r.depth);
       const cls = r.kind === "untracked" ? "row untracked"
         : r.kind === "area" ? "row area"
         : "row" + (r.hasChildren ? " parent" : "");
@@ -999,7 +1010,7 @@ class HierarchyEnergyCard extends HTMLElement {
       .track { flex:1 1 auto; min-width:20px; height:16px; background:var(--divider-color, rgba(127,127,127,0.2)); border-radius:4px; overflow:hidden; }
       .bar { height:100%; border-radius:4px; transition:width .2s ease; }
       .row.untracked .bar { background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
-      .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
+      .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; }
       .val .u { font-size:0.75em; }
       .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--secondary-text-color); }
       .val.zero, .name.zero, .cost.zero, .cost.na, .pct.zero { color: var(--disabled-text-color, #9e9e9e); }
