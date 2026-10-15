@@ -139,6 +139,11 @@ Lovelace's card helpers), the card shows a hint instead of silent zeros.
 
 ## Configuration
 
+Both cards have a **visual editor** in the dashboard (add/edit the card), with
+options grouped into Content / Tree / Ordering / Visual / Chips / Cost /
+Advanced panels. The tables below list the same options for hand-written YAML;
+any key you add in YAML is preserved by the visual editor.
+
 ### `custom:hierarchy-power-card`
 
 | Option | Type | Default | Description |
@@ -245,7 +250,7 @@ Three options control row order, one per hierarchy level, because they answer
 different questions:
 
 - **`first_level_sort_by`** — the **level-1 rows**: the top-level zones/devices
-  in your built-in `nodes:` config.
+  (the entries from your Energy dashboard).
 - **`area_sort_by`** — the **area group rows** (level 2), the ones introduced by
   `group_by_area`.
 - **`entity_sort_by`** — the **leaves inside an area** (level 3 and deeper).
@@ -257,7 +262,7 @@ Each accepts:
 | `name` | A–Z, case-insensitive (locale-aware). |
 | `kwh` | Consumption, largest first. On the power card this is the live value (W). |
 | `cost` | Allocated cost, largest first. **Energy card only** — the power card has no cost column, so it falls back to `kwh`. |
-| `tree` | The order you wrote in the card's built-in `nodes:` config. Useful to hand-curate a fixed order. |
+| `tree` | The order the entries appear in your Energy dashboard. Keep it to preserve the dashboard's own order. |
 
 Defaults:
 
@@ -325,16 +330,14 @@ These are the reasons this is pre-release rather than release-ready:
 3. **Admin-only.** `energy/get_prefs` fails for non-admin users; the card shows
    an error message instead of degrading.
 4. **Polling.** The Energy card polls the collection every 500 ms while mounted.
-5. **No GUI editor.** There is no `getConfigElement` / `getConfigForm`, and no
-   `getStubConfig`, so the card picker/YAML editor can't help configure it.
-6. **Partial localisation.** Several strings are hard-coded English
+5. **Partial localisation.** Several strings are hard-coded English
    ("Total", "Untracked", "Collapse all", …) and the `Vazio`/`Fora` tariff
    labels are Portugal-specific defaults.
-7. **`hide_zero` / `zero_threshold` are inert on the Energy card.** They are
+6. **`hide_zero` / `zero_threshold` are inert on the Energy card.** They are
    referenced in `getCardSize()` but not applied by the render path.
-8. **Flat tree without hierarchy.** The tree only nests if you set
+7. **Flat tree without hierarchy.** The tree only nests if you set
    "Included in" on your Energy devices; otherwise all devices are roots.
-9. **No tests / no bundler.** The build is a plain concatenation and there is
+8. **No tests / no bundler.** The build is a plain concatenation and there is
    no automated test suite.
 
 ## Roadmap
@@ -349,7 +352,9 @@ These are the reasons this is pre-release rather than release-ready:
 - [ ] Add explicit `total`/`grid`/`solar`/`battery`/`soc` source overrides and a
       manual `devices:` list, for users who don't use the Energy dashboard.
 - [ ] Extract shared code into `src/shared.js` and switch the build to esbuild.
-- [ ] Add a visual config editor + `getStubConfig()`.
+- [x] Add a visual config editor + `getStubConfig()`. (HA built-in form editor
+      via `getConfigForm()`, grouped into Content / Tree / Ordering / Visual /
+      Chips / Cost / Advanced panels.)
 - [ ] Replace the internal-collection scan with a supported data path (or a
       clearly documented fallback).
 - [ ] Handle non-admin users gracefully.
