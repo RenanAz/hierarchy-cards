@@ -17,17 +17,17 @@ configuration — no extra sensors or templates required.
 
 ## History
 
-`763e960` is the imported baseline — the cards exactly as they ran before this
+`b11c737` is the imported baseline — the cards exactly as they ran before this
 repository existed. Everything above it is a reviewable change:
 
 | Commit | Change |
 |--------|--------|
-| `5b38c2b` | removed the 660 px inner scroll cap |
-| `6e7c9a0` | `getCardSize()` computed from visible rows |
-| `eb1a2ee` | dropped hard-coded personal tariff defaults |
-| `ebc6b38` | energy card mounts its own `energy-date-selection` |
+| `0be9021` | removed the 660 px inner scroll cap |
+| `1b588c8` | `getCardSize()` computed from visible rows |
+| `c706a5f` | dropped hard-coded personal tariff defaults |
+| `bc7b7cc` | energy card mounts its own `energy-date-selection` |
 
-`git diff 763e960..HEAD` is the full delta from the original code.
+`git diff b11c737..HEAD` is the full delta from the original code.
 
 ---
 
@@ -351,8 +351,8 @@ These are the reasons this is pre-release rather than release-ready:
 ## Roadmap
 
 - [x] Mount the built-in Energy date picker when the dashboard has none
-      (`date_picker`). `ebc6b38`
-- [x] Size to content instead of a fixed 660 px box. `5b38c2b`, `6e7c9a0`
+      (`date_picker`). `bc7b7cc`
+- [x] Size to content instead of a fixed 660 px box. `0be9021`, `1b588c8`
 - [ ] Give the Energy card its own date range (Today / Week / Month / custom)
       with the picker as an optional override.
 - [ ] Let config values be entity IDs, so users can point the card at their own
