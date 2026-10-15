@@ -49,6 +49,7 @@ class HierarchyEnergyCard extends HTMLElement {
       suppress_parent_area: true,
       grid_show_out: true,
       chip_io_style: "arrows",
+      chip_font_size: "small",
       show_percent: false,
       bar_scale: "global",
       show_grid_battery: true,
@@ -128,6 +129,7 @@ class HierarchyEnergyCard extends HTMLElement {
       suppress_parent_area: "Hide parent's own area", show_untracked: "Show untracked row",
       untracked_label: "Untracked label", no_area_label: "No-area label",
       grid_show_out: "Show grid export", chip_io_style: "In/out display",
+      chip_font_size: "Chip font size",
       first_level_sort_by: "Level 1 (zones) order",
       area_sort_by: "Area rows order", entity_sort_by: "Entities-in-area order",
       bar_scale: "Bar scale", show_percent: "Percentage column",
@@ -165,6 +167,7 @@ class HierarchyEnergyCard extends HTMLElement {
       cost_width: "CSS size, e.g. 60px. Enable Show cost column for this to take effect.",
       cost_decimals: "Enable Show cost column for this to take effect.",
       chip_io_style: "Show energy direction as arrows or the words in / out.",
+      chip_font_size: "Size of the summary chip text and icons.",
       grid_battery_entity: "Grid-to-battery energy sensor. The chip is hidden when unset.",
       date_picker: "Auto mounts a picker when the dashboard has none.",
       zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
@@ -223,6 +226,14 @@ class HierarchyEnergyCard extends HTMLElement {
               selector: { select: { options: [
                 { value: "arrows", label: "Arrows" },
                 { value: "words", label: "in / out" }
+              ] } }
+            },
+            {
+              name: "chip_font_size",
+              selector: { select: { options: [
+                { value: "small", label: "Small" },
+                { value: "medium", label: "Medium" },
+                { value: "large", label: "Large" }
               ] } }
             },
             { name: "show_grid_battery", selector: { boolean: {} } },
@@ -939,6 +950,14 @@ class HierarchyEnergyCard extends HTMLElement {
     return s;
   }
 
+  // Summary-chip font scale. `small` is the historical size; `medium`/`large`
+  // step the label, value and icon up. Whitelisted so a bad config value can't
+  // reach the class name.
+  _chipSize() {
+    const v = String(this._config.chip_font_size || "small").toLowerCase();
+    return (v === "medium" || v === "large") ? v : "small";
+  }
+
   _summaryHtml() {
     if (!this._config.show_summary || !this._byId.size || !this._range) return "";
     const s = this._summary();
@@ -1028,7 +1047,7 @@ class HierarchyEnergyCard extends HTMLElement {
       });
     }
     if (!chips.length) return "";
-    return '<div class="summary">' + chips.map((c) =>
+    return '<div class="summary chip-size-' + this._chipSize() + '">' + chips.map((c) =>
       '<div class="chip" style="--chip-color:' + c.color + '"' + (c.e ? ' data-entity="' + this._esc(c.e) + '"' : "") + (c.t ? ' title="' + this._esc(c.t) + '"' : "") + ">" +
         '<ha-icon class="ic" icon="' + c.icon + '"></ha-icon>' +
         '<div class="txt"><span class="k">' + this._esc(c.k) + '</span><span class="v">' + (c.vHtml != null ? c.vHtml : this._esc(c.v)) + "</span></div>" +
@@ -1297,13 +1316,16 @@ class HierarchyEnergyCard extends HTMLElement {
       .picker-hint { font-size:0.8rem; color:var(--secondary-text-color); padding:6px 4px; }
       .picker-hint code { font-size:0.85em; }
       .summary { display:flex; flex-wrap:wrap; gap:6px; padding:6px 12px 6px; }
-      .chip { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; background:var(--secondary-background-color, rgba(127,127,127,0.1)); border-left:3px solid var(--chip-color, var(--primary-color)); min-width:72px; }
+      .summary.chip-size-small { --chip-k:0.68rem; --chip-v:0.84rem; --chip-ic:17px; --chip-gap:6px; --chip-pad-y:5px; --chip-pad-x:8px; --chip-minw:64px; }
+      .summary.chip-size-medium { --chip-k:0.78rem; --chip-v:0.95rem; --chip-ic:20px; --chip-gap:8px; --chip-pad-y:6px; --chip-pad-x:10px; --chip-minw:72px; }
+      .summary.chip-size-large { --chip-k:0.88rem; --chip-v:1.06rem; --chip-ic:24px; --chip-gap:10px; --chip-pad-y:7px; --chip-pad-x:12px; --chip-minw:80px; }
+      .chip { display:flex; align-items:center; gap:var(--chip-gap, 8px); padding:var(--chip-pad-y, 6px) var(--chip-pad-x, 10px); border-radius:8px; background:var(--secondary-background-color, rgba(127,127,127,0.1)); border-left:3px solid var(--chip-color, var(--primary-color)); min-width:var(--chip-minw, 72px); }
       .chip[data-entity] { cursor:pointer; }
       .chip[data-entity]:hover { filter:brightness(1.12); }
-      .chip .ic { color:var(--chip-color, var(--primary-color)); --mdc-icon-size:20px; flex:0 0 auto; }
+      .chip .ic { color:var(--chip-color, var(--primary-color)); --mdc-icon-size:var(--chip-ic, 20px); flex:0 0 auto; }
       .chip .txt { display:flex; flex-direction:column; }
-      .chip .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
-      .chip .v { font-size:0.84rem; font-variant-numeric:tabular-nums; }
+      .chip .k { font-size:var(--chip-k, 0.68rem); text-transform:uppercase; letter-spacing:0.03em; color:var(--secondary-text-color); }
+      .chip .v { font-size:var(--chip-v, 0.84rem); font-variant-numeric:tabular-nums; }
       .chip .u { font-size:0.72em; }
       .chip .ioSep { opacity:.55; }
       .chip .io.in { color:#4dabf7; }

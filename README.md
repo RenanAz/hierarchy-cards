@@ -175,6 +175,7 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `hide_unit_label` | bool | `false` | Hide the unit suffix next to values. |
 | `grid_show_out` | bool | `true` | Show grid **export** as well as import in the Grid chip. When off, only the import figure is shown. |
 | `chip_io_style` | string | `arrows` | Show chip energy direction as `arrows` or the words `in` / `out`. |
+| `chip_font_size` | string | `small` | Size of the summary chip text, icons and spacing: `small`, `medium`, or `large`. |
 
 ### `custom:hierarchy-energy-card`
 
@@ -218,6 +219,7 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `gas_label` | string | `Gas` | Gas chip label. |
 | `grid_show_out` | bool | `true` | Show grid export as well as import in the Grid chip; when off, only import is shown. |
 | `chip_io_style` | string | `arrows` | Show chip energy direction as `arrows` or the words `in` / `out`. |
+| `chip_font_size` | string | `small` | Size of the summary chip text, icons and spacing: `small`, `medium`, or `large`. |
 | `date_picker` | string | `auto` | `auto` mounts a built-in `energy-date-selection` when none is present; `always`; `never`. |
 | `cost.peak_entity` | string \| null | `null` | Energy sensor for the peak tariff period. |
 | `cost.offpeak_entity` | string \| null | `null` | Energy sensor for the off-peak period. |

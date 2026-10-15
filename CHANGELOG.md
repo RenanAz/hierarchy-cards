@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `chip_font_size` option (`small` | `medium` | `large`) on both cards, under
+  the **Summary chips** (energy) / **Summary** (power) editor panel. `small`
+  keeps the previous chip text sizes while shrinking the icon; `medium` and
+  `large` step the label, value, icon, icon-to-text gap and chip padding up. The
+  icon and spacing at `medium` match the previous values.
+
 ### Security
 - Validate the `label_width` / `value_width` / `percent_width` / `cost_width`
   options before interpolating them into the card stylesheet. Invalid or
