@@ -524,6 +524,19 @@ class HierarchyPowerCard extends HTMLElement {
     ));
   }
 
+  // Validate a user-supplied CSS length before interpolating it into the
+  // <style> block. Only simple lengths (number + optional unit) pass; anything
+  // else falls back to the default, so a crafted value cannot break out of the
+  // custom-property declaration and inject CSS.
+  _cssLen(v, fallback) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (/^(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|em|rem|ch|vw|vh|vmin|vmax|pt|pc|cm|mm|in|q)?$/.test(s)) return s;
+    // Allow functional notations (calc/min/max/clamp/var) but no structural
+    // characters (`; { } < > " ' \`) that could break out of the declaration.
+    if (/^(?:calc|min|max|clamp|var)\([^;{}<>"'\\]*\)$/.test(s)) return s;
+    return fallback;
+  }
+
   _uSpan(unit) {
     return '<span class="u">' + this._esc(unit) + "</span>";
   }
@@ -765,7 +778,7 @@ class HierarchyPowerCard extends HTMLElement {
 
   _css() {
     return `
-      :host { display:block; --label-w:${this._config.label_width || "30%"}; --val-w:${this._config.value_width || "68px"}; --pct-w:${this._config.percent_width || "34px"}; }
+      :host { display:block; --label-w:${this._cssLen(this._config.label_width, "30%")}; --val-w:${this._cssLen(this._config.value_width, "68px")}; --pct-w:${this._cssLen(this._config.percent_width, "34px")}; }
       .head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:12px 16px 4px; }
       .ttl { font-size:1.05rem; font-weight:600; }
       .controls { display:flex; align-items:center; gap:10px; }
@@ -1925,6 +1938,19 @@ class HierarchyEnergyCard extends HTMLElement {
     ));
   }
 
+  // Validate a user-supplied CSS length before interpolating it into the
+  // <style> block. Only simple lengths (number + optional unit) pass; anything
+  // else falls back to the default, so a crafted value cannot break out of the
+  // custom-property declaration and inject CSS.
+  _cssLen(v, fallback) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (/^(?:\d+(?:\.\d+)?|\.\d+)(?:px|%|em|rem|ch|vw|vh|vmin|vmax|pt|pc|cm|mm|in|q)?$/.test(s)) return s;
+    // Allow functional notations (calc/min/max/clamp/var) but no structural
+    // characters (`; { } < > " ' \`) that could break out of the declaration.
+    if (/^(?:calc|min|max|clamp|var)\([^;{}<>"'\\]*\)$/.test(s)) return s;
+    return fallback;
+  }
+
   _uSpan(unit) {
     return '<span class="u">' + this._esc(unit) + "</span>";
   }
@@ -2105,7 +2131,7 @@ class HierarchyEnergyCard extends HTMLElement {
 
   _css() {
     return `
-      :host { display:block; --label-w:${this._config.label_width || "30%"}; --val-w:${this._config.value_width || "68px"}; --pct-w:${this._config.percent_width || "34px"}; --cost-w:${this._config.cost_width || "62px"}; }
+      :host { display:block; --label-w:${this._cssLen(this._config.label_width, "30%")}; --val-w:${this._cssLen(this._config.value_width, "68px")}; --pct-w:${this._cssLen(this._config.percent_width, "34px")}; --cost-w:${this._cssLen(this._config.cost_width, "62px")}; }
       .head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:12px 16px 4px; }
       .ttl { font-size:1.05rem; font-weight:600; }
       .controls { display:flex; align-items:center; gap:10px; }

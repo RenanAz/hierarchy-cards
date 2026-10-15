@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- Validate the `label_width` / `value_width` / `percent_width` / `cost_width`
+  options before interpolating them into the card stylesheet. Invalid or
+  crafted values now fall back to their defaults instead of being injected
+  verbatim (`calc()` / `var()` expressions still pass).
+
 ## [1.1.0] - 2026-10-15
 
 ### Added
