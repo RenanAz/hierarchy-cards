@@ -1082,7 +1082,7 @@ class HierarchyEnergyCard extends HTMLElement {
       .row.untracked .bar { background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 8px); }
       .val { flex:0 0 var(--val-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; }
       .val .u { font-size:0.75em; }
-      .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; color:var(--secondary-text-color); }
+      .cost { flex:0 0 var(--cost-w); text-align:right; font-variant-numeric:tabular-nums; font-size:0.85rem; }
       .val.zero, .name.zero, .cost.zero, .cost.na, .pct.zero { color: var(--disabled-text-color, #9e9e9e); }
       .cost.na { font-style: italic; }
       .cost .u { font-size:0.75em; }
