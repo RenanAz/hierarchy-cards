@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Grid carbon chips** on the energy card (`show_carbon`, off by default):
+  a **low-carbon share** chip and a **grid CO₂ intensity** chip, both averaged
+  over the selected Energy period and energy-weighted by grid import (falls
+  back to the live reading when the sensors have no history). Colour-coded
+  (green / amber / red) using HA's gauge thresholds. Sensors auto-detected from
+  the Electricity Maps integration, overridable with `carbon_intensity_entity`
+  / `carbon_fossil_entity`; labels via `low_carbon_label` /
+  `carbon_intensity_label`.
 - `chip_font_size` option (`small` | `medium` | `large`) on both cards, under
   the **Summary chips** (energy) / **Summary** (power) editor panel. `small`
   keeps the previous chip text sizes while shrinking the icon; `medium` and

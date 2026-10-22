@@ -882,6 +882,7 @@ class HierarchyEnergyCard extends HTMLElement {
     this._byId = new Map();
     this._roots = [];
     this._totals = {};
+    this._carbon = null;
     this._grandTotal = 0;
     this._range = null;
     this._expanded = null;
@@ -927,6 +928,11 @@ class HierarchyEnergyCard extends HTMLElement {
       water_label: "Water",
       show_gas: true,
       gas_label: "Gas",
+      show_carbon: false,
+      carbon_intensity_entity: null,
+      carbon_fossil_entity: null,
+      low_carbon_label: "Low carbon",
+      carbon_intensity_label: "Grid CO\u2082",
       max_rows: 300,
       label_width: "30%",
       value_width: "68px",
@@ -963,6 +969,9 @@ class HierarchyEnergyCard extends HTMLElement {
       const stored = localStorage.getItem(this._storageKey);
       if (stored) this._expanded = new Set(JSON.parse(stored));
     } catch (e) { this._expanded = null; }
+    // A config change (e.g. toggling the carbon chips) should refresh the
+    // period statistics even when the selected range has not changed.
+    if (this._range) this._scheduleLoadStats();
     this._render();
   }
 
@@ -1008,6 +1017,10 @@ class HierarchyEnergyCard extends HTMLElement {
       grid_battery_label: "Grid-to-battery label",
       show_water: "Show water chip", water_label: "Water label",
       show_gas: "Show gas chip", gas_label: "Gas label",
+      show_carbon: "Show carbon chips", low_carbon_label: "Low-carbon label",
+      carbon_intensity_label: "CO\u2082 intensity label",
+      carbon_intensity_entity: "CO\u2082 intensity entity",
+      carbon_fossil_entity: "Fossil-fuel % entity",
       show_tariff: "Show tariff chip", tariff_offpeak_label: "Off-peak label",
       tariff_peak_label: "Peak label", tariff_decimals: "Tariff decimals",
       tariff_display: "Tariff display", tariff_peak_first: "Peak first",
@@ -1036,6 +1049,8 @@ class HierarchyEnergyCard extends HTMLElement {
       cost_decimals: "Enable Show cost column for this to take effect.",
       chip_io_style: "Show energy direction as arrows or the words in / out.",
       chip_font_size: "Size of the summary chip text and icons.",
+      carbon_intensity_entity: "Grid carbon intensity sensor (gCO\u2082eq/kWh). Auto-detected when empty.",
+      carbon_fossil_entity: "Grid fossil-fuel percentage sensor. Auto-detected when empty.",
       grid_battery_entity: "Grid-to-battery energy sensor. The chip is hidden when unset.",
       date_picker: "Auto mounts a picker when the dashboard has none.",
       zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
@@ -1104,6 +1119,11 @@ class HierarchyEnergyCard extends HTMLElement {
                 { value: "large", label: "Large" }
               ] } }
             },
+            { name: "show_carbon", selector: { boolean: {} } },
+            { name: "carbon_intensity_entity", selector: { entity: {} } },
+            { name: "carbon_fossil_entity", selector: { entity: {} } },
+            { name: "low_carbon_label", selector: { text: {} } },
+            { name: "carbon_intensity_label", selector: { text: {} } },
             { name: "show_grid_battery", selector: { boolean: {} } },
             { name: "grid_battery_entity", selector: { entity: {} } },
             { name: "grid_battery_label", selector: { text: {} } },
@@ -1485,6 +1505,9 @@ class HierarchyEnergyCard extends HTMLElement {
     this._error = null;
     this._render();
     const ids = this._collectIds();
+    const carb = this._config.show_carbon ? this._carbonIds() : {};
+    const carbonIds = [carb.intensity, carb.fossil].filter(Boolean);
+    const statIds = Array.from(new Set(ids.concat(carbonIds)));
     const start = this._range.start;
     const end = this._range.end;
     const period = this._periodFor(start, end);
@@ -1493,9 +1516,9 @@ class HierarchyEnergyCard extends HTMLElement {
         type: "recorder/statistics_during_period",
         start_time: start.toISOString(),
         end_time: end.toISOString(),
-        statistic_ids: ids,
+        statistic_ids: statIds,
         period: period,
-        types: ["change"]
+        types: ["change", "mean"]
       });
       if (seq !== this._loadSeq) return;
       const totals = {};
@@ -1511,12 +1534,75 @@ class HierarchyEnergyCard extends HTMLElement {
         totals[id] = sum * this._factor(id);
       }
       this._totals = totals;
+      if (this._config.show_carbon) this._carbon = this._computeCarbon(res, carb);
     } catch (e) {
       if (seq !== this._loadSeq) return;
       this._error = "Error fetching statistics: " + (e && e.message ? e.message : e);
     }
     this._loading = false;
     this._render();
+  }
+
+  // Grid carbon sensors (Electricity Maps by default). Explicit config wins;
+  // otherwise auto-detect: intensity by its gCO2eq/kWh unit, fossil share by id.
+  _carbonIds() {
+    let intensity = this._config.carbon_intensity_entity || null;
+    let fossil = this._config.carbon_fossil_entity || null;
+    const states = (this._hass && this._hass.states) || {};
+    if (!intensity) {
+      for (const id in states) {
+        const a = states[id] && states[id].attributes;
+        const u = a && a.unit_of_measurement;
+        if (typeof u === "string" && /co2eq/i.test(u) && /kwh/i.test(u)) { intensity = id; break; }
+      }
+    }
+    if (!fossil) {
+      for (const id in states) {
+        if (/fossil_fuel_percentage/.test(id)) { fossil = id; break; }
+      }
+    }
+    return { intensity: intensity, fossil: fossil };
+  }
+
+  // Period averages for the carbon sensors. Each stats bucket's mean is
+  // weighted by the grid import in that same bucket, so an hour that drew a lot
+  // of grid power counts for more; falls back to a plain mean without grid data.
+  _computeCarbon(res, carb) {
+    const gridIds = [];
+    for (const s of (this._prefs && this._prefs.energy_sources) || []) {
+      if (s && s.type === "grid" && s.stat_energy_from) gridIds.push(s.stat_energy_from);
+    }
+    const weights = new Map();
+    for (const gid of gridIds) {
+      const stats = res ? res[gid] : null;
+      if (!stats) continue;
+      for (const row of stats) {
+        const v = row ? row.change : null;
+        if (typeof v === "number" && isFinite(v)) weights.set(row.start, (weights.get(row.start) || 0) + v * this._factor(gid));
+      }
+    }
+    const wavg = (id) => {
+      const stats = id ? (res ? res[id] : null) : null;
+      if (!stats) return null;
+      let wsum = 0, wacc = 0, ssum = 0, n = 0;
+      for (const row of stats) {
+        const m = row ? row.mean : null;
+        if (typeof m !== "number" || !isFinite(m)) continue;
+        const w = weights.get(row.start) || 0;
+        wsum += w; wacc += m * w; ssum += m; n++;
+      }
+      if (wsum > 0) return wacc / wsum;
+      if (n > 0) return ssum / n;
+      return null;
+    };
+    const intensity = wavg(carb.intensity);
+    const fossil = wavg(carb.fossil);
+    return {
+      intensityId: carb.intensity || null,
+      fossilId: carb.fossil || null,
+      intensity: intensity,
+      low: (fossil == null) ? null : Math.max(0, Math.min(100, 100 - fossil))
+    };
   }
 
   _isExpanded(id) {
@@ -1826,6 +1912,42 @@ class HierarchyEnergyCard extends HTMLElement {
     return (v === "medium" || v === "large") ? v : "small";
   }
 
+  // Carbon values for the chips: prefer the period average computed in
+  // _loadStats; fall back to the sensors' live reading when they have no
+  // statistics for the range.
+  _carbonValues() {
+    const c = this._carbon || {};
+    const auto = this._carbonIds();
+    const intensityId = c.intensityId || auto.intensity || null;
+    const fossilId = c.fossilId || auto.fossil || null;
+    const live = (id) => {
+      const st = id && this._hass && this._hass.states[id];
+      const v = st ? parseFloat(st.state) : NaN;
+      return isFinite(v) ? v : null;
+    };
+    let intensity = (typeof c.intensity === "number") ? c.intensity : live(intensityId);
+    let low = (typeof c.low === "number") ? c.low : null;
+    if (low == null) {
+      const f = live(fossilId);
+      if (f != null) low = Math.max(0, Math.min(100, 100 - f));
+    }
+    return { intensity: intensity, low: low, intensityId: intensityId, fossilId: fossilId };
+  }
+
+  _co2Color(v) {
+    if (v == null) return null;
+    if (v >= 300) return "#e15759";
+    if (v >= 150) return "#f28e2b";
+    return "#59a14f";
+  }
+
+  _lowCarbonColor(p) {
+    if (p == null) return null;
+    if (p >= 60) return "#59a14f";
+    if (p >= 30) return "#f28e2b";
+    return "#e15759";
+  }
+
   _summaryHtml() {
     if (!this._config.show_summary || !this._byId.size || !this._range) return "";
     const s = this._summary();
@@ -1913,6 +2035,29 @@ class HierarchyEnergyCard extends HTMLElement {
         color: "#e67e22",
         t: "Gas usage over the selected Energy period. Click the Energy date selector to change the range."
       });
+    }
+    if (this._config.show_carbon) {
+      const cv = this._carbonValues();
+      if (cv.low != null) {
+        chips.push({
+          k: this._config.low_carbon_label || "Low carbon",
+          e: cv.fossilId,
+          vHtml: this._esc(String(Math.round(cv.low))) + " " + this._uSpan("%"),
+          icon: "mdi:leaf",
+          color: this._lowCarbonColor(cv.low),
+          t: "Low-carbon share of grid electricity over the selected period (100 \u2212 fossil fuel %)."
+        });
+      }
+      if (cv.intensity != null) {
+        chips.push({
+          k: this._config.carbon_intensity_label || "Grid CO\u2082",
+          e: cv.intensityId,
+          vHtml: this._esc(String(Math.round(cv.intensity))) + " " + this._uSpan("gCO\u2082/kWh"),
+          icon: "mdi:molecule-co2",
+          color: this._co2Color(cv.intensity),
+          t: "Average grid carbon intensity over the selected period."
+        });
+      }
     }
     if (!chips.length) return "";
     return '<div class="summary chip-size-' + this._chipSize() + '">' + chips.map((c) =>

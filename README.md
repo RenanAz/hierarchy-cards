@@ -217,6 +217,11 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `water_label` | string | `Water` | Water chip label. |
 | `show_gas` | bool | `true` | Show the gas chip when the Energy dashboard has gas. |
 | `gas_label` | string | `Gas` | Gas chip label. |
+| `show_carbon` | bool | `false` | Show two carbon chips (energy card): the **low-carbon share** and the **grid CO₂ intensity** for the selected period. Needs the Electricity Maps integration (or any intensity + fossil-% sensors). |
+| `low_carbon_label` | string | `Low carbon` | Label for the low-carbon chip. |
+| `carbon_intensity_label` | string | `Grid CO₂` | Label for the CO₂ intensity chip. |
+| `carbon_intensity_entity` | string \| null | auto | Grid carbon intensity sensor (gCO₂eq/kWh). Auto-detected (Electricity Maps) when unset. |
+| `carbon_fossil_entity` | string \| null | auto | Grid fossil-fuel percentage sensor. Auto-detected when unset. Low-carbon % = 100 − fossil %. |
 | `grid_show_out` | bool | `true` | Show grid export as well as import in the Grid chip; when off, only import is shown. |
 | `chip_io_style` | string | `arrows` | Show chip energy direction as `arrows` or the words `in` / `out`. |
 | `chip_font_size` | string | `small` | Size of the summary chip text, icons and spacing: `small`, `medium`, or `large`. |
