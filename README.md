@@ -157,7 +157,10 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `suppress_parent_area` | bool | `true` | When grouping by area, don't nest an area bucket inside the same area again (keeps the top-level area group; avoids echoing the parent). |
 | `show_untracked` | bool | `true` | Show the "parent minus children" remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
+| `untracked_total_entity` | string \| null | `null` | Whole-house meter (energy statistic / power entity). When set, a **level-1** Untracked row shows the difference between this total and the tracked rows. Required with virtual energy zones, which have no meter of their own. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
+| `use_virtual_energy_zones` | bool | `false` | Build the level-1 rows from [virtual energy zones](#virtual-energy-zones) instead of upstream devices only. |
+| `virtual_energy_zones` | list | `[]` | Zones for `use_virtual_energy_zones`: `[{id, name, icon, areas: [...]}]`. |
 | `bar_scale` | string | `parent` | Bar length basis: `parent` (share of parent), `total` (share of grand total), `global` (share of largest row). |
 | `show_percent` | bool \| string | `false` | Show the percentage column: `true`/`all`, `areas`, `devices`, or `false`. |
 | `first_level_sort_by` | string | `tree` | Order of the **level-1 rows** (the top-level zones/devices). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
@@ -189,7 +192,10 @@ for hand-written YAML; any key you add in YAML is preserved by the visual editor
 | `suppress_parent_area` | bool | `true` | Don't nest an area bucket inside the same area again (keeps the top-level group). |
 | `show_untracked` | bool | `true` | Show the remainder row. |
 | `untracked_label` | string | `Untracked` | Label for that row. |
+| `untracked_total_entity` | string \| null | `null` | Whole-house meter (energy statistic / power entity). When set, a **level-1** Untracked row shows the difference between this total and the tracked rows. Required with virtual energy zones, which have no meter of their own. |
 | `no_area_label` | string | `No area` | Label for devices without an area. |
+| `use_virtual_energy_zones` | bool | `false` | Build the level-1 rows from [virtual energy zones](#virtual-energy-zones) instead of upstream devices only. |
+| `virtual_energy_zones` | list | `[]` | Zones for `use_virtual_energy_zones`: `[{id, name, icon, areas: [...]}]`. |
 | `bar_scale` | string | `global` | `parent`, `total` or `global`. |
 | `show_percent` | bool \| string | `false` | `true`/`all`, `areas`, `devices`, or `false`. |
 | `first_level_sort_by` | string | `tree` | Order of the **level-1 rows** (the top-level zones/devices). `name`, `kwh`, `cost`, or `tree`. See [Ordering](#ordering). |
@@ -257,6 +263,54 @@ cost:
     - sensor.hot_water_energy
 ```
 
+### Virtual energy zones
+
+Not every house has an upstream breaker to name a zone after. With
+`use_virtual_energy_zones` the level-1 rows are built from area groups instead:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `use_virtual_energy_zones` | bool | `false` | Turn Virtual Energy Zones on for this card. |
+| `virtual_energy_zones` | list | `[]` | The zones. Each: `id` (optional, defaults to a slug of the name), `name`, `icon` (optional), `areas` (list of area ids). |
+
+```yaml
+type: custom:hierarchy-energy-card
+use_virtual_energy_zones: true
+virtual_energy_zones:
+  - id: house
+    name: House
+    icon: mdi:home
+    areas: [kitchen, living_room]
+  - id: annex
+    name: Annex
+    areas: [garage, workshop]
+```
+
+Behaviour:
+
+- Membership is decided by the **top-level device's own area** (the entity's
+  area, else its device's area). A device subtree that spans areas is never
+  split, so nothing is counted twice. If you already have upstream breakers,
+  put the breaker's own area in the zone.
+- Inside a zone the rows are always grouped by area (zone → area → devices),
+  even when `group_by_area` is off. A single-area zone still shows its area row.
+- Areas in no zone, and devices with no area, stay as normal top-level rows
+  after the zones. A zone with no matching devices is not rendered.
+- **One area belongs to one zone.** If hand-written YAML lists an area in two
+  zones, the first zone in config order keeps it and the card shows a warning
+  naming the conflict (the duplicate is never counted). In the visual editor,
+  ticking an area in another zone moves it.
+- A virtual zone has no meter of its own, so where its energy "goes missing" is
+  not inferable. Set `untracked_total_entity` to a whole-house meter and the
+  card adds a **level-1 Untracked** row (a sibling of the zones) holding
+  `total − all tracked rows`. Without that option no level-1 row is invented.
+- `id` is generated from the name the first time and never changes, so renaming
+  a zone keeps its expand/collapse state.
+- Zones work side by side with real breakers: roots in no zone still render as
+  their own top-level rows.
+- Both cards take the same options, so copy `use_virtual_energy_zones` /
+  `virtual_energy_zones` between the power and energy cards.
+
 ### Ordering
 
 Three options control row order, one per hierarchy level, because they answer
@@ -323,6 +377,12 @@ Notes:
   dilute the rate applied to the remaining lines. Children plus `Untracked`
   still sum to the parent, and the root rows sum exactly to the chip.
 - Area grouping uses `hass.entities` / `hass.devices` / `hass.areas`.
+- Virtual Energy Zones insert one synthetic level-1 node per zone above the real
+  roots (children are the roots whose area the zone claims); its value is the
+  sum of its children, so totals, percentages, cost allocation and expansion
+  keep working unchanged. Area ownership is resolved into a single
+  area → zone map before rendering, so a duplicate area can never be counted
+  twice.
 - Boilerplate (colours, escaping, formatting, tree building, area lookup) is
   currently duplicated between the two source files; see the roadmap.
 
