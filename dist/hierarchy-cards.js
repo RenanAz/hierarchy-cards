@@ -1,4 +1,4 @@
-/*! hierarchy-cards v1.1.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
+/*! hierarchy-cards v1.2.0 — Home Assistant Lovelace cards: live power and energy breakdown by upstream device, grouped by area.
  *  Source: src/hierarchy-power-card.js, src/hierarchy-energy-card.js
  *  License: MIT */
 

@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-23
+
 ### Added
 - **Virtual Energy Zones** on both cards (`use_virtual_energy_zones` + `virtual_energy_zones`): build
   the level-1 rows from groups of areas instead of requiring an upstream
