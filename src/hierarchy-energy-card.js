@@ -45,6 +45,7 @@ class HierarchyEnergyCard extends HTMLElement {
       entity_sort_by: "kwh",
       first_level_sort_by: "tree",
       untracked_label: "Untracked",
+      untracked_total_entity: null,
       no_area_label: "No area",
       group_by_area: false,
       suppress_parent_area: true,
@@ -81,7 +82,9 @@ class HierarchyEnergyCard extends HTMLElement {
       show_cost: false,
       cost_width: "62px",
       cost_decimals: 2,
-      cost_show_currency: true
+      cost_show_currency: true,
+      use_virtual_energy_zones: false,
+      virtual_energy_zones: []
     }, config);
     this._config.cost = Object.assign({
       peak_entity: null,
@@ -101,6 +104,8 @@ class HierarchyEnergyCard extends HTMLElement {
       const stored = localStorage.getItem(this._storageKey);
       if (stored) this._expanded = new Set(JSON.parse(stored));
     } catch (e) { this._expanded = null; }
+    // Zone config changes the tree shape, so rebuild it (prefs are cached).
+    if (this._prefs) this._buildTree(this._prefs);
     // A config change (e.g. toggling the carbon chips) should refresh the
     // period statistics even when the selected range has not changed.
     if (this._range) this._scheduleLoadStats();
@@ -109,6 +114,10 @@ class HierarchyEnergyCard extends HTMLElement {
 
   static getStubConfig() {
     return { title: "Consumption by Zone", unit: "kWh" };
+  }
+
+  static getConfigElement() {
+    return document.createElement("hierarchy-energy-card-editor");
   }
 
   // Declarative editor (HA's built-in form editor, no custom element). HA keeps
@@ -137,6 +146,7 @@ class HierarchyEnergyCard extends HTMLElement {
       max_rows: "Maximum rows", group_by_area: "Group by area",
       suppress_parent_area: "Hide parent's own area", show_untracked: "Show untracked row",
       untracked_label: "Untracked label", no_area_label: "No-area label",
+      untracked_total_entity: "Total meter for Untracked",
       grid_show_out: "Show grid export", chip_io_style: "In/out display",
       chip_font_size: "Chip font size",
       first_level_sort_by: "Level 1 (zones) order",
@@ -184,6 +194,7 @@ class HierarchyEnergyCard extends HTMLElement {
       carbon_intensity_entity: "Grid carbon intensity sensor (gCO\u2082eq/kWh). Auto-detected when empty.",
       carbon_fossil_entity: "Grid fossil-fuel percentage sensor. Auto-detected when empty.",
       grid_battery_entity: "Grid-to-battery energy sensor. The chip is hidden when unset.",
+      untracked_total_entity: "Whole-house energy sensor. When set, a level-1 Untracked row shows the difference between it and the tracked rows. Needed with virtual energy zones, which have no meter of their own.",
       date_picker: "Auto mounts a picker when the dashboard has none.",
       zero_cost_entities: "Solar-served loads: excluded from cost and shown as a dash.",
       cost_show_currency: "Append the currency symbol to each cost value. Enable Show cost column for this to take effect.",
@@ -205,6 +216,7 @@ class HierarchyEnergyCard extends HTMLElement {
             { name: "suppress_parent_area", selector: { boolean: {} } },
             { name: "show_untracked", selector: { boolean: {} } },
             { name: "untracked_label", selector: { text: {} } },
+            { name: "untracked_total_entity", selector: { entity: {} } },
             { name: "no_area_label", selector: { text: {} } },
             { name: "max_rows", selector: { number: { min: 1, mode: "box" } } }
           ]
@@ -407,6 +419,81 @@ class HierarchyEnergyCard extends HTMLElement {
     }
     this._byId = byId;
     this._roots = roots;
+    this._applyVirtualZones();
+  }
+
+  // ---- virtual zones -------------------------------------------------------
+  // A zone owns a list of areas. Every renderer reads the area -> zone map from
+  // _zoneIndex(), so an area claimed by two zones can never be counted twice:
+  // the first zone in config order keeps it and the others are reported.
+  static _normalizeZones(config) {
+    const raw = config && config.virtual_energy_zones;
+    const list = Array.isArray(raw) ? raw : [];
+    const out = [];
+    const seen = new Set();
+    for (const z of list) {
+      if (!z || typeof z !== "object") continue;
+      const areas = Array.from(new Set(Array.isArray(z.areas)
+        ? z.areas.filter((a) => typeof a === "string" && a.trim()).map((a) => a.trim())
+        : []));
+      const hasName = typeof z.name === "string" && !!z.name.trim();
+      if (!hasName && !areas.length) continue;
+      const name = hasName ? z.name.trim() : "Zone";
+      let id = (typeof z.id === "string" && z.id.trim())
+        ? z.id.trim()
+        : name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!id) id = "zone";
+      const base = id;
+      for (let n = 2; seen.has(id); n++) id = base + "-" + n;
+      seen.add(id);
+      out.push({ id, name, icon: (typeof z.icon === "string" && z.icon) ? z.icon : null, areas });
+    }
+    return out;
+  }
+
+  _zoneDefs() {
+    if (!this._config.use_virtual_energy_zones) return [];
+    return HierarchyEnergyCard._normalizeZones(this._config);
+  }
+
+  _zoneIndex(defs) {
+    const map = new Map();
+    const conflicts = [];
+    for (const z of defs) {
+      for (const a of z.areas) {
+        const kept = map.get(a);
+        if (kept) { conflicts.push({ area: a, kept: kept.name, dropped: z.name }); continue; }
+        map.set(a, z);
+      }
+    }
+    return { map, conflicts };
+  }
+
+  // Insert one synthetic node per zone above the real roots. Roots whose area is
+  // in no zone stay top-level, so nothing disappears. Membership is decided by
+  // the root's own area only — a mixed-area device subtree is never split, which
+  // would double-count it.
+  _applyVirtualZones() {
+    const defs = this._zoneDefs();
+    this._zoneConflicts = [];
+    if (!defs.length) return;
+    const { map, conflicts } = this._zoneIndex(defs);
+    this._zoneConflicts = conflicts;
+    const buckets = new Map(defs.map((d) => [d.id, []]));
+    const loose = [];
+    for (const r of this._roots) {
+      const z = map.get(this._areaOf(r.id).key);
+      if (z) buckets.get(z.id).push(r); else loose.push(r);
+    }
+    const zones = [];
+    for (const d of defs) {
+      const kids = buckets.get(d.id);
+      if (!kids.length) continue;
+      const zn = { id: "vzone:" + d.id, name: d.name, icon: d.icon, virtual: true, children: kids };
+      this._byId.set(zn.id, zn);
+      zones.push(zn);
+    }
+    this._roots = zones.concat(loose);
   }
 
   _friendly(id) {
@@ -612,7 +699,9 @@ class HierarchyEnergyCard extends HTMLElement {
   }
 
   _collectIds() {
-    const ids = new Set(this._byId.keys());
+    const ids = new Set();
+    // `_byId` also holds synthetic zone nodes, which have no statistics.
+    for (const n of this._byId.values()) if (!n.virtual) ids.add(n.id);
     const srcs = (this._prefs && this._prefs.energy_sources) || [];
     for (const s of srcs) {
       if (!s) continue;
@@ -626,6 +715,7 @@ class HierarchyEnergyCard extends HTMLElement {
     const c = this._config.cost || {};
     if (c.peak_entity) ids.add(c.peak_entity);
     if (c.offpeak_entity) ids.add(c.offpeak_entity);
+    if (this._config.untracked_total_entity) ids.add(this._config.untracked_total_entity);
     if (this._config.grid_battery_entity) ids.add(this._config.grid_battery_entity);
     return Array.from(ids);
   }
@@ -888,8 +978,19 @@ class HierarchyEnergyCard extends HTMLElement {
 
   _flatten() {
     const rows = [];
+    // A synthetic zone is worth the sum of its member roots. Set before anything
+    // reads totals: _summary(), the cost weights and the comparators use them.
+    for (const r of this._roots) {
+      if (!r.virtual) continue;
+      this._totals[r.id] = r.children.reduce((s, c) => s + (this._totals[c.id] || 0), 0);
+    }
     const total = this._roots.reduce((s, r) => s + (this._totals[r.id] || 0), 0);
     this._grandTotal = total;
+    // Level-1 Untracked. A virtual zone has no meter of its own to subtract its
+    // members from, so the gap can only come from an explicit whole-house total.
+    const meterId = this._config.untracked_total_entity;
+    const meterTotal = meterId ? (this._totals[meterId] || 0) : null;
+    const gap = (meterTotal != null) ? Math.max(0, meterTotal - total) : 0;
     // Per-row cost is a pro-rata allocation of the whole-period cost the card
     // already computes for the "Cost" chip. Allocation uses a per-node "cost
     // weight" — grid-billed energy — rather than raw energy, so that entries in
@@ -921,6 +1022,9 @@ class HierarchyEnergyCard extends HTMLElement {
     };
     let costBase = 0;
     for (const r of this._roots) costBase += computeWeight(r, false);
+    // Untracked is part of the same bill, so it joins the allocation base and
+    // takes its pro-rata share; every visible cost still sums to the chip.
+    costBase += gap; 
     const hasCost = typeof summary.cost === "number" && isFinite(summary.cost) && costBase > 0;
     this._hasCost = hasCost;
     this._costUnit = hasCost ? (summary.cost / costBase) : 0;
@@ -936,15 +1040,15 @@ class HierarchyEnergyCard extends HTMLElement {
     const walk = (node, depth, color, parentValue, enclosingKey) => {
       const v = this._totals[node.id] || 0;
       push({
-        kind: "node", id: node.id, name: node.name, depth: depth,
-        value: v, color: this._tint(color, depth), entity: node.id,
-        zeroCost: zeroCost.has(node.id),
-        hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id)
+        kind: node.virtual ? "zone" : "node", id: node.id, name: node.name, depth: depth,
+        value: v, color: this._tint(color, depth), entity: node.virtual ? null : node.id,
+        zeroCost: !node.virtual && zeroCost.has(node.id),
+        hasChildren: node.children.length > 0, expanded: this._isExpanded(node.id), icon: node.icon || null
       }, v, parentValue, weight.get(node.id));
       if (!node.children.length || !this._isExpanded(node.id)) return;
       let kids = node.children.slice();
       if (cmpEntity) kids.sort(cmpEntity);
-      if (this._config.group_by_area) {
+      if (this._config.group_by_area || node.virtual) {
         const buckets = new Map();
         for (const k of kids) {
           const a = this._areaOf(k.id);
@@ -983,7 +1087,7 @@ class HierarchyEnergyCard extends HTMLElement {
       } else {
         kids.forEach((k) => walk(k, depth + 1, color, v, null));
       }
-      if (this._config.show_untracked) {
+      if (this._config.show_untracked && !node.virtual) {
         const u = this._untracked(node);
         push({
           kind: "untracked", id: node.id + ":untracked", name: this._config.untracked_label,
@@ -995,6 +1099,12 @@ class HierarchyEnergyCard extends HTMLElement {
     let roots = this._roots.slice();
     if (cmpRoot) roots.sort(cmpRoot);
     roots.forEach((r, i) => walk(r, 0, HEC_PALETTE[i % HEC_PALETTE.length], total, null));
+    if (gap > 0 && this._config.show_untracked !== false) {
+      push({
+        kind: "untracked", id: "untracked:total", name: this._config.untracked_label,
+        depth: 0, value: gap, color: null, hasChildren: false, expanded: false
+      }, gap, meterTotal, gap);
+    }
     return rows;
   }
 
@@ -1078,6 +1188,26 @@ class HierarchyEnergyCard extends HTMLElement {
     if (p >= 60) return "#59a14f";
     if (p >= 30) return "#f28e2b";
     return "#e15759";
+  }
+
+  // An area claimed by two zones is only ever rendered under the first, so say
+  // so instead of silently dropping the duplicate.
+  _zoneWarningHtml() {
+    const defs = this._zoneDefs();
+    if (!defs.length) return "";
+    if (!defs.some((z) => z.areas.length)) {
+      return '<div class="status warn">Virtual Energy Zones are on, but no zone has areas assigned yet.</div>';
+    }
+    const conflicts = this._zoneConflicts || [];
+    if (!conflicts.length) return "";
+    const areaName = (id) => {
+      const a = this._hass && this._hass.areas ? this._hass.areas[id] : null;
+      return (a && a.name) ? a.name : id;
+    };
+    const parts = conflicts.map((c) => this._esc(areaName(c.area)) +
+      " is in both " + this._esc(c.kept) + " and " + this._esc(c.dropped) +
+      " \u2014 kept in " + this._esc(c.kept) + ".");
+    return '<div class="status warn">' + parts.join(" ") + "</div>";
   }
 
   _summaryHtml() {
@@ -1291,7 +1421,7 @@ class HierarchyEnergyCard extends HTMLElement {
   _showPctFor(kind, pctMode) {
     if (pctMode === "off") return false;
     if (pctMode === "all") return true;
-    if (pctMode === "areas") return kind === "area";
+    if (pctMode === "areas") return kind === "area" || kind === "zone";
     if (pctMode === "devices") return kind === "node";
     return false;
   }
@@ -1330,13 +1460,14 @@ class HierarchyEnergyCard extends HTMLElement {
       const w = this._widthFor(r, max);
       const indent = this._indentFor(r.depth);
       const cls = r.kind === "untracked" ? "row untracked"
-        : r.kind === "area" ? "row area"
+        : (r.kind === "area" || r.kind === "zone") ? "row area"
         : "row" + (r.hasChildren ? " parent" : "");
       const color = r.kind === "untracked" ? "var(--disabled-text-color, #9e9e9e)" : (r.color || "var(--primary-color)");
       const toggle = r.hasChildren
         ? '<span class="chev" data-toggle="' + this._esc(r.id) + '">' + (r.expanded ? "\u25BE" : "\u25B8") + "</span>"
         : '<span class="chev empty"></span>';
-      const rowIcon = r.kind === "area" ? '<ha-icon class="ric" icon="' + this._esc(r.icon || "mdi:floor-plan") + '"></ha-icon>' : "";
+      const rowIcon = (r.kind === "area" || r.kind === "zone")
+        ? '<ha-icon class="ric" icon="' + this._esc(r.icon || (r.kind === "zone" ? "mdi:home-group" : "mdi:floor-plan")) + '"></ha-icon>' : "";
       const nameCls = (r.kind === "untracked" ? "name untracked-name" : "name") + (r.hasChildren ? " clickable" : "");
       const nameAttr = r.hasChildren ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       // Fade rows that display as zero (kWh and/or cost) so the live lines stand out.
@@ -1350,7 +1481,7 @@ class HierarchyEnergyCard extends HTMLElement {
             (this._showPctFor(r.kind, pctMode) ? (r.pct != null ? this._esc(this._fmtPct(r.pct)) : "\u2013") : "") +
           "</span>"
         : "";
-      const rowToggleAttr = (r.kind === "area" && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
+      const rowToggleAttr = ((r.kind === "area" || r.kind === "zone") && r.hasChildren) ? ' data-toggle="' + this._esc(r.id) + '"' : "";
       const entityAttr = (r.kind === "node" && r.entity) ? ' data-entity="' + this._esc(r.entity) + '"' : "";
       const costZero = (r.cost == null) || Math.abs(Number(r.cost) || 0) < 0.005;
       const costUnit = (this._config.cost && this._config.cost.unit) || "\u20ac";
@@ -1393,6 +1524,7 @@ class HierarchyEnergyCard extends HTMLElement {
         '<div class="controls">' + controls +
         '<div class="period">' + this._esc(this._periodText()) + "</div></div></div>" +
         this._maybePickerHtml() +
+        this._zoneWarningHtml() +
         this._summaryHtml() +
         '<div class="card-content">' + body + status + "</div>" +
       "</ha-card>";
@@ -1504,14 +1636,230 @@ class HierarchyEnergyCard extends HTMLElement {
       .cost .u { font-size:0.75em; }
       .status { padding:10px 4px; color:var(--secondary-text-color); font-size:0.9rem; }
       .status.error { color:var(--error-color, #c62828); }
+      .status.warn { color:var(--warning-color, #ff9800); }
     `;
+  }
+}
+
+// Visual editor: HA's built-in form for every static option, plus a zone list.
+// It exists because ha-form cannot render a repeatable list, and zones need an
+// area picker (an `object`/text field cannot offer one).
+class HierarchyEnergyCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = {};
+    this._hass = null;
+    this._form = null;
+    this._zones = [];
+    this._sig = null;
+    this._areasSig = null;
+    this._shell = false;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+    const sig = Object.keys((hass && hass.areas) || {}).sort().join("|");
+    if (sig !== this._areasSig) { this._areasSig = sig; this._paintZones(); }
+  }
+  get hass() { return this._hass; }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._zones = HierarchyEnergyCard._normalizeZones(this._config);
+    if (!this._shell) this._buildShell();
+    this._form.data = this._config;
+    const sw = this.shadowRoot.querySelector(".zswitch");
+    if (sw) sw.checked = !!this._config.use_virtual_energy_zones;
+    // Only rebuild the list when its shape changes, so typing in a zone name
+    // does not tear down the focused field.
+    const sig = this._zones.map((z) => z.id).join("|");
+    if (sig !== this._sig) { this._sig = sig; this._paintZones(); }
+  }
+
+  _buildShell() {
+    this._shell = true;
+    this.shadowRoot.innerHTML =
+      "<style>" +
+        ":host { display:block; }" +
+        ".zones { margin-top:16px; border-top:1px solid var(--divider-color,rgba(127,127,127,0.2)); padding-top:12px; }" +
+        ".zhead { font-weight:500; font-size:0.95rem; }" +
+        ".zhint { color:var(--secondary-text-color); font-size:0.85rem; margin:4px 0 8px; }" +
+        ".ztoggle { display:flex; align-items:center; gap:8px; font-size:0.9rem; margin-bottom:8px; }" +
+        ".zone { border:1px solid var(--divider-color,rgba(127,127,127,0.2)); border-radius:6px; padding:8px; margin-bottom:8px; }" +
+        ".zr { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }" +
+        ".zname { flex:1 1 180px; min-width:0; box-sizing:border-box; padding:14px 12px; font:inherit; color:var(--primary-text-color); background:var(--mdc-text-field-fill-color, rgba(127,127,127,0.12)); border:1px solid var(--divider-color, rgba(127,127,127,0.35)); border-radius:4px; }" +
+        ".zname:focus { outline:none; border-color:var(--primary-color); }" +
+        ".zicon { flex:0 1 170px; min-width:130px; }" +
+        ".zdel { flex:0 0 auto; margin-left:auto; background:none; border:none; color:var(--error-color,#c62828); cursor:pointer; font-size:0.8rem; padding:6px 0; }" +
+        ".zareas { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:2px 10px; margin-top:8px; }" +
+        ".zarea { display:flex; align-items:center; gap:6px; font-size:0.85rem; cursor:pointer; min-width:0; }" +
+        ".zarea span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }" +
+        ".zarea input { accent-color:var(--primary-color); margin:0; }" +
+        ".zadd { background:none; border:1px solid var(--primary-color); color:var(--primary-color); border-radius:4px; padding:6px 10px; cursor:pointer; font-size:0.85rem; }" +
+        ".zempty { color:var(--secondary-text-color); font-size:0.85rem; margin-bottom:8px; }" +
+      "</style>" +
+      '<div class="form"></div>' +
+      '<div class="zones">' +
+        '<div class="zhead">Virtual Energy Zones</div>' +
+        '<div class="zhint">Group areas into zones that can span floors or floors-plus-extras. ' +
+          "Each area belongs to one zone: picking it in another zone moves it there.</div>" +
+        '<label class="ztoggle"><ha-switch class="zswitch"></ha-switch><span>Use virtual energy zones</span></label>' +
+        '<div class="zlist"></div>' +
+        '<button class="zadd">Add zone</button>' +
+      "</div>";
+
+    const cfg = HierarchyEnergyCard.getConfigForm();
+    const form = document.createElement("ha-form");
+    form.hass = this._hass;
+    form.data = this._config;
+    form.schema = cfg.schema;
+    if (cfg.computeLabel) form.computeLabel = cfg.computeLabel;
+    if (cfg.computeHelper) form.computeHelper = cfg.computeHelper;
+    form.addEventListener("value-changed", (ev) => {
+      this._config = Object.assign({}, this._config, ev.detail.value);
+      this._emit();
+    });
+    this._form = form;
+    this.shadowRoot.querySelector(".form").appendChild(form);
+
+    const sw = this.shadowRoot.querySelector(".zswitch");
+    sw.addEventListener("change", () => {
+      this._config = Object.assign({}, this._config, { use_virtual_energy_zones: !!sw.checked });
+      this._emit();
+    });
+    this.shadowRoot.querySelector(".zadd").addEventListener("click", () => {
+      const used = new Set(this._zones.map((z) => z.id));
+      let id = "zone";
+      for (let n = 2; used.has(id); n++) id = "zone-" + n;
+      this._zones = this._zones.concat([{ id, name: "New zone", icon: null, areas: [] }]);
+      this._sig = null;
+      this._emit();
+    });
+  }
+
+  _paintZones() {
+    const list = this.shadowRoot && this.shadowRoot.querySelector(".zlist");
+    if (!list) return;
+    if (!this._zones.length) {
+      list.innerHTML = '<div class="zempty">No zones yet.</div>';
+      return;
+    }
+    list.innerHTML = "";
+    for (const z of this._zones) {
+      // The panel re-normalizes `this._zones` on every config round-trip, so
+      // handlers resolve the live object by id instead of closing over this one.
+      const cur = () => this._zones.find((x) => x.id === z.id);
+
+      const row = document.createElement("div");
+      row.className = "zone";
+      const head = document.createElement("div");
+      head.className = "zr";
+
+      // Native input: ha-textfield is gone and ha-selector's internal width
+      // overflowed the flex row, so the name box ran under the icon picker.
+      const name = document.createElement("input");
+      name.type = "text";
+      name.className = "zname";
+      name.placeholder = "Zone name";
+      name.value = z.name;
+      name.addEventListener("change", () => {
+        const c = cur();
+        if (!c) return;
+        const v = name.value.trim();
+        if (!v) { name.value = c.name; return; }
+        c.name = v;
+        this._emit();
+      });
+      name.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") name.blur();
+      });
+
+      const icon = document.createElement("ha-selector");
+      icon.className = "zicon";
+      icon.hass = this._hass;
+      icon.selector = { icon: {} };
+      icon.value = z.icon || "";
+      icon.addEventListener("value-changed", (ev) => {
+        const c = cur();
+        if (!c) return;
+        c.icon = ev.detail.value || null;
+        this._emit();
+      });
+
+      const rm = document.createElement("button");
+      rm.className = "zdel";
+      rm.textContent = "Remove";
+      rm.addEventListener("click", () => {
+        this._zones = this._zones.filter((x) => x.id !== z.id);
+        this._sig = null;
+        this._emit();
+      });
+
+      // Plain checkbox list, not ha-selector-area: the area picker renders
+      // nothing outside HA's own form context, and we want the move-on-select
+      // behaviour to be obvious.
+      const areas = document.createElement("div");
+      areas.className = "zareas";
+      const allAreas = (this._hass && this._hass.areas) || {};
+      const areaIds = Object.keys(allAreas).sort((a, b) =>
+        String(allAreas[a].name || a).localeCompare(String(allAreas[b].name || b)));
+      for (const areaId of areaIds) {
+        const lab = document.createElement("label");
+        lab.className = "zarea";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = z.areas.indexOf(areaId) !== -1;
+        cb.addEventListener("change", () => {
+          const c = cur();
+          if (!c) return;
+          if (cb.checked) {
+            c.areas = c.areas.concat([areaId]);
+            // Move, don't copy: an area lives in at most one zone.
+            for (const other of this._zones) {
+              if (other.id !== c.id) other.areas = other.areas.filter((a) => a !== areaId);
+            }
+          } else {
+            c.areas = c.areas.filter((a) => a !== areaId);
+          }
+          this._paintZones();
+          this._emit();
+        });
+        const txt = document.createElement("span");
+        txt.textContent = allAreas[areaId].name || areaId;
+        lab.appendChild(cb);
+        lab.appendChild(txt);
+        areas.appendChild(lab);
+      }
+
+      head.appendChild(name);
+      head.appendChild(icon);
+      head.appendChild(rm);
+      row.appendChild(head);
+      row.appendChild(areas);
+      list.appendChild(row);
+    }
+  }
+
+  _emit() {
+    const zones = this._zones.map((z) => ({
+      id: z.id, name: z.name, icon: z.icon || undefined, areas: z.areas.slice()
+    }));
+    const config = Object.assign({}, this._config, { virtual_energy_zones: zones });
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config }, bubbles: true, composed: true
+    }));
   }
 }
 
 if (!customElements.get("hierarchy-energy-card")) {
   customElements.define("hierarchy-energy-card", HierarchyEnergyCard);
 }
-window.customCards = window.customCards || [];
+if (!customElements.get("hierarchy-energy-card-editor")) {
+  customElements.define("hierarchy-energy-card-editor", HierarchyEnergyCardEditor);
+}window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === "hierarchy-energy-card")) {
   window.customCards.push({
     type: "hierarchy-energy-card",

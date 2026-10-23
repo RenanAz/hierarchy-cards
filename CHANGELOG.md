@@ -6,6 +6,20 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Virtual Energy Zones** on both cards (`use_virtual_energy_zones` + `virtual_energy_zones`): build
+  the level-1 rows from groups of areas instead of requiring an upstream
+  breaker. Zones insert a synthetic row above the real roots, always show their
+  areas, and can be mixed with real breakers. An area can belong to only one
+  zone: the first zone in config order keeps a duplicated area and the card
+  shows a conflict warning, so totals never double-count. The visual editor
+  gains a **Virtual Energy Zones** section (switch, add/remove zone, icon, area
+  checkboxes); both cards now ship a custom config element.
+- **Level-1 Untracked row** (`untracked_total_entity`): point it at a
+  whole-house meter and the card renders an `Untracked` row as a sibling of the
+  top-level zones/roots, worth `total − tracked rows`. This is the only way a
+  virtual zone can report the load that no device accounts for. On the energy
+  card the row takes its pro-rata share of the period cost, so visible costs
+  still sum to the `Cost` chip.
 - **Grid carbon chips** on the energy card (`show_carbon`, off by default):
   a **low-carbon share** chip and a **grid CO₂ intensity** chip, both averaged
   over the selected Energy period and energy-weighted by grid import (falls
